@@ -1,0 +1,13 @@
+# Ignore everything under results (no exceptions now)
+results/**
+
+# Ignore CSV/PDF anywhere
+*.csv
+*.pdf
+
+# Logs
+*.log
+*.log.*
+
+# Specific run dir you mentioned earlier
+imseg_workload/DALI/mlcomns_imseg_with_dali/results_#Diff_GPU/
