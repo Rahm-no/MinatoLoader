@@ -1,0 +1,10 @@
+.cache/
+.conda/
+.vscode-server/
+.ipynb_checkpoints/
+__MACOSX/
+*.pyc
+*.swp
+*.log
+*.csv
+
