@@ -23,16 +23,11 @@ DATASET_SIZE = 168
 
 
 def main():
-    # throughput_file = "results_#Diff_GPU/6GPUs_50epochs_dali.csv"
     throughput_file = "prefetch_queue_depth8.csv"
     with open(throughput_file, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(['epoch', 'iteration','throughput(MBs)', 'iteration_time', 'time_diff', 'iter_persec'])
     
-    # accuracy_file = "accuracy_500epochs_dali.csv"
-    # with open(accuracy_file, 'w', newline='') as csvfile:
-    #     csv_writer = csv.writer(csvfile)
-    #     csv_writer.writerow(['epoch', 'accuracy', 'mean dice','l1 dice','l2 dice'])
 
     torch.cuda.empty_cache()
 
