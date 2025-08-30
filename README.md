@@ -1,19 +1,20 @@
-# Image segmentation workload
+# MinatoLoader
 
-This code is taken from the [MLCommons Training Image Segmentation Workload](https://github.com/mlcommons/training/tree/master/image_segmentation/pytorch).
+## 1. Abstract  
 
--------------------------
-You should not have to modify this code - especially the model code.
--------------------------
--------------------------
+*Data loaders* are used by Machine Learning (ML) frameworks like **PyTorch** and **TensorFlow** to apply transformations to data before feeding it into the accelerator.  
+This operation is called **data preprocessing**.  
 
+Data preprocessing plays an important role in the ML training workflow because if it is inefficiently pipelined with the training, it can yield **high GPU idleness**, resulting in important training delays.  
 
-I have modified the launch scripts to conveniently launch training on multiple GPUs on a single node, using the DDP launch script as documented [here](https://github.com/pytorch/examples/blob/main/distributed/ddp/README.md). 
+Unfortunately, existing data loaders waste GPU resources — for example, the **PyTorch DataLoader** leads to about **76% GPU idleness**. A key source of inefficiency is the variability in preprocessing time across samples within the same dataset. Existing data loaders are oblivious to this variability and construct batches without considering slow vs. fast samples. As a result, the entire batch is delayed by a single slow sample, **stalling the training pipeline and causing head-of-line blocking**.  
 
-I've also added some logging statements in the code to print which cases are read by each GPU to verify they are separate (analysis ongoing) which does not affect the model logic. 
+To address these inefficiencies, we present **MinatoLoader**, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization.  
+MinatoLoader is designed for a **single-server, multi-GPU setup**. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel.  
 
-
-The `start_training.sh` script is used to launch training as the root process in the container and is used in the traces. `run_and_time.sh` is the actual training entry point. 
+We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
+- On a machine with four A100 GPUs, MinatoLoader improves training time of a wide range of workloads by up to **7.5× (3.6× on average)** over PyTorch DataLoader and Pecan, and up to **3× (2.2× on average)** over NVIDIA DALI.  
+- It also increases **average GPU utilization from 46.4% (PyTorch) to 90.45%**, while preserving model accuracy and enabling faster convergence.  
 
 
 # Original Documentation
