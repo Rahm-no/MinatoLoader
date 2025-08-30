@@ -8,6 +8,5 @@ results/**
 # Logs
 *.log
 *.log.*
+imseg_workload/DALI_prev/
 
-# Specific run dir you mentioned earlier
-imseg_workload/DALI/mlcomns_imseg_with_dali/results_#Diff_GPU/

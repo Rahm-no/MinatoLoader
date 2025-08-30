@@ -2,65 +2,57 @@
 
 ## 1. Abstract  
 
-*Data loaders* are used by Machine Learning (ML) frameworks like **PyTorch** and **TensorFlow** to apply transformations to data before feeding it into the accelerator.  
-This operation is called **data preprocessing**.  
-
-Data preprocessing plays an important role in the ML training workflow because if it is inefficiently pipelined with the training, it can yield **high GPU idleness**, resulting in important training delays.  
-
-Unfortunately, existing data loaders waste GPU resources — for example, the **PyTorch DataLoader** leads to about **76% GPU idleness**. A key source of inefficiency is the variability in preprocessing time across samples within the same dataset. Existing data loaders are oblivious to this variability and construct batches without considering slow vs. fast samples. As a result, the entire batch is delayed by a single slow sample, **stalling the training pipeline and causing head-of-line blocking**.  
-
-To address these inefficiencies, we present **MinatoLoader**, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization.  
-MinatoLoader is designed for a **single-server, multi-GPU setup**. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel.  
-
-We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
+*Data loaders* are used by Machine Learning (ML) frameworks like **PyTorch** and **TensorFlow** to apply transformations to data before feeding it into the accelerator. This operation is called **data preprocessing**.  Data preprocessing plays an important role in the ML training workflow because if it is inefficiently pipelined with the training, it can yield **high GPU idleness**, resulting in important training delays.  Unfortunately, existing data loaders waste GPU resources — for example, the **PyTorch DataLoader** leads to about **76% GPU idleness**. A key source of inefficiency is the variability in preprocessing time across samples within the same dataset. Existing data loaders are oblivious to this variability and construct batches without considering slow vs. fast samples. As a result, the entire batch is delayed by a single slow sample, **stalling the training pipeline and causing head-of-line blocking**.   To address these inefficiencies, we present **MinatoLoader**, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization.   MinatoLoader is designed for a **single-server, multi-GPU setup**. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel.  We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
 - On a machine with four A100 GPUs, MinatoLoader improves training time of a wide range of workloads by up to **7.5× (3.6× on average)** over PyTorch DataLoader and Pecan, and up to **3× (2.2× on average)** over NVIDIA DALI.  
 - It also increases **average GPU utilization from 46.4% (PyTorch) to 90.45%**, while preserving model accuracy and enabling faster convergence.  
 
+## 2. Execution Environment
 
-# Original Documentation
-# 1. Problem
+Our experiments were run on the following environment:
+
+- **Operating System**: xx
+- **CPU**:xx
+- **RAM**: xx
+- **GPU**:xx
+- **Storage**: xx
+
+**Software Stack**:
+- NVIDIA Driver: xx
+- CUDA: xx
+- cuDNN: xx
+- PyTorch: xx
+- NVIDIA DALI: xx
+- Python: xx
+- Docker: xx
+
+We also verified functionality on a smaller setup:
+- xx
+- xx
+
+## 3. A description of each artifact component and how it relates to the paper
+
+
+## 4. Introduction 
+This work presents 3D-UNet workload using three systems: PyTorch, DALI and Minato. 
+
+
 This benchmark represents a 3D medical image segmentation task using [2019 Kidney Tumor Segmentation Challenge](https://kits19.grand-challenge.org/) dataset called [KiTS19](https://github.com/neheller/kits19). The task is carried out using a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant based on the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper.
 
-## Dataset
 
 The data is stored in the [KiTS19 github repository](https://github.com/neheller/kits19).
 
-## Publication/Attribution
-Heller, Nicholas and Isensee, Fabian and Maier-Hein, Klaus H and Hou, Xiaoshuai and Xie, Chunmei and Li, Fengyi and Nan, Yang and Mu, Guangrui and Lin, Zhiyong and Han, Miofei and others.
-"The state of the art in kidney and kidney tumor segmentation in contrast-enhanced CT imaging: Results of the KiTS19 Challenge".
-Medical Image Analysis, 101821, Elsevier (2020).
-
-Heller, Nicholas and Sathianathen, Niranjan and Kalapara, Arveen and Walczak, Edward and Moore, Keenan and Kaluzniak, Heather and Rosenberg, Joel and Blake, Paul and Rengel, Zachary and Oestreich, Makinna and others.
-"The kits19 challenge data: 300 kidney tumor cases with clinical context, ct semantic segmentations, and surgical outcomes".
-arXiv preprint arXiv:1904.00445 (2019).
-
-# 2. Directions
-
-## Steps to configure machine
-
-1. Clone the repository.
- 
-    Create a folder for the project and clone the repository
-    
-    ```bash
-    git clone https://github.com/mmarcinkiewicz/training.git
-    ```
-    or
-    ```bash
-    git clone https://github.com/mlperf/training.git
-    ```
-    once U-Net3D becomes available in the main repository.
-
-2. Build the U-Net3D Docker container.
-    
-    ```bash
-    cd training/image_segmentation/pytorch
-    docker build -t unet3d .
-    ```
-
-## Steps to download and verify data
-
-1. Download the data
+## Steps to download and preprocess the data
+1. Clone the MinatoLoader Eurosys  repo
+```bash 
+git clone git@github.com:Rahm-no/MinatoLoader.git
+```
+2. Build docker image 
+```bash 
+cd imseg_workload
+docker build -t minato:latest .
+./start_container.sh 
+```
+3. Download the data
    
     To download the data please follow the instructions:
     ```bash
@@ -74,7 +66,17 @@ arXiv preprint arXiv:1904.00445 (2019).
     This will download the original, non-interpolated data to `raw-data-dir/kits19/data`
 
  
-2. Start an interactive session in the container to run preprocessing/training/inference.
+2. Preprocess the dataset.
+   
+    
+    The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
+    ```bash
+    python3 preprocess_dataset.py --data_dir /raw_data --results_dir /data
+    ```
+   
+    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source.
+
+<!-- 2. Start an interactive session in the container to run preprocessing/training/inference.
  
     You will need to mount two (or three) directories:
     - for raw data (RAW-DATA-DIR) 
@@ -84,18 +86,9 @@ arXiv preprint arXiv:1904.00445 (2019).
     ```bash
     mkdir data
     mkdir results
-    docker run --ipc=host -it --rm --runtime=nvidia -v RAW-DATA-DIR:/raw_data -v PREPROCESSED-DATA-DIR:/data -v RESULTS-DIR:/results unet3d:latest /bin/bash
+   -->
     ```
- 
-3. Preprocess the dataset.
-    
-    The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
-    ```bash
-    python3 preprocess_dataset.py --data_dir /raw_data --results_dir /data
-    ```
-   
-    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source.
-
+<!-- 
 ## Steps to run and time
 
 The basic command to run on 1 worker takes form:
@@ -176,4 +169,4 @@ epoch the run is considered as non-converged.
 The validation dataset is composed of 42 volumes. They were pre-selected, and their IDs are stored in the `evaluation_cases.txt` file.
 A valid score is obtained as an average `mean_dice` score across the whole 42 volumes. Please mind that a multi-worker training in popular frameworks is using so-called samplers to shard the data.
 Such samplers tend to shard the data equally across all workers. For convenience, this is achieved by either truncating the dataset, so it is divisible by the number of workers,
-or the "missing" data is copied. This most likely will influence the final score - a valid evaluation is performed on exactly 42 volumes and each volume's score has a weight of 1/42 of the total sum of the scores. 
+or the "missing" data is copied. This most likely will influence the final score - a valid evaluation is performed on exactly 42 volumes and each volume's score has a weight of 1/42 of the total sum of the scores.  -->
