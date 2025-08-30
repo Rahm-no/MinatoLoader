@@ -5,10 +5,10 @@ set -e
 # to use the script:
 #   run_and_time.sh <random seed 1-5> <num_gpus>
 
-SEED=${1:--1}
 
-NUM_GPUS=8
-MAX_EPOCHS=5
+SEED=${1:--1} 
+NUM_GPUS=${2:-8}
+MAX_EPOCHS=10
 QUALITY_THRESHOLD="0.908"
 START_EVAL_AT=50
 EVALUATE_EVERY=50

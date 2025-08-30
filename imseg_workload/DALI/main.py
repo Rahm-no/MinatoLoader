@@ -17,18 +17,18 @@ from runtime.distributed_utils import init_distributed, get_world_size, get_devi
 from runtime.distributed_utils import seed_everything, setup_seeds
 from runtime.logging import get_dllogger, mllog_start, mllog_end, mllog_event, mlperf_submission_log, mlperf_run_param_log
 from runtime.callbacks import get_callbacks
+import time
 
 DATASET_SIZE = 168
 
 
 
 def main():
-    throughput_file = "prefetch_queue_depth8.csv"
+    throughput_file = "test_DALI.csv"
     with open(throughput_file, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(['epoch', 'iteration','throughput(MBs)', 'iteration_time', 'time_diff', 'iter_persec'])
     
-
     torch.cuda.empty_cache()
 
     mllog.config(filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unet3d.log'))
@@ -57,7 +57,6 @@ def main():
     worker_seeds, shuffling_seeds = setup_seeds(flags.seed, flags.epochs, device)
     worker_seed = worker_seeds[local_rank]
     seed_everything(worker_seed)
-    # mllog_event(key=constants.SEED, value=flags.seed if flags.seed != -1 else worker_seed, sync=False)
 
     if is_main_process:
         mlperf_submission_log()
@@ -71,15 +70,7 @@ def main():
     mllog_start(key=constants.RUN_START, sync=True)
 
     train_dataloader, val_dataloader = get_data_loaders(flags, num_shards=world_size, global_rank=local_rank)
-    # mllog_event(key='len train_dataloader', value=len(train_dataloader), sync=False)
-    # mllog_event(key='len val_dataloader', value=len(val_dataloader), sync=False)
-
-    # samples_per_epoch = world_size * len(train_dataloader) * flags.batch_size
-    # mllog_event(key='samples_per_epoch', value=samples_per_epoch, sync=False)
-    # mllog_event(key='batch size', value= flags.batch_size, sync=False)
-
-    # flags.evaluate_every = flags.evaluate_every or ceil(20*DATASET_SIZE/samples_per_epoch)
-    # flags.start_eval_at = flags.start_eval_at or ceil(1000*DATASET_SIZE/samples_per_epoch)
+ 
     flags.evaluate_every = 50
     flags.start_eval_at = 50
 
@@ -95,8 +86,10 @@ def main():
                          include_background=flags.include_background)
 
     if flags.exec_mode == 'train':
+        start_training_time = time.time()
         train(flags, model, train_dataloader, val_dataloader, loss_fn, score_fn, 
               device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file)
+        end_training_time = time.time() - start_training_time
 
     elif flags.exec_mode == 'evaluate':
         eval_metrics = evaluate(flags, model, val_dataloader, loss_fn, score_fn,

@@ -3,6 +3,9 @@ FROM ${FROM_IMAGE_NAME}
 
 ADD . /workspace/unet3d
 WORKDIR /workspace/unet3d
+RUN chmod -R +x /workspace/unet3d
+
+
 RUN chmod +x /workspace/unet3d/*/run_and_time.sh
 
 RUN apt-get update && \

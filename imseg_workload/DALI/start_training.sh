@@ -19,20 +19,24 @@ then
 	DOCKER_MEMORY_PARAM="-m ${DOCKER_MEMORY}g"
 fi
 
-docker run --ipc=host \
-           --gpus all \
-           --privileged \
-            -u $(id -u rnouaj):$(id -g rnouaj) \
-           --volume /run/udev:/run/udev:ro \
-           --volume .:/workspace \
-           --volume /sys/kernel/config:/sys/kernel/config:ro \
-           --volume /dev:/dev:ro \
-           -v /usr/local/cuda12.5:/mnt \
-           --name="train_imseg" \
-           --runtime=nvidia \
-           -it --rm $DOCKER_MEMORY_PARAM \
-           -v /raid/data/imseg/raw-data/kits19/data/:/raw_data \
-            -v /raid/data/imseg/raw-data/kits19/200gb_data/:/data \
-           -v ${SCRIPT_DIR}/output:/results \
-           -v ${SCRIPT_DIR}/ckpts:/ckpts \
-           unet3d:dali bash
+# docker run --ipc=host \
+#            --gpus all \
+#            --name="train_imseg" \
+#            --runtime=nvidia \
+#            -it --rm $DOCKER_MEMORY_PARAM \
+#             -v "$(pwd)":/workspace/unet3d \
+#            -v /raid/data/imseg/raw-data/kits19/data/:/raw_data \
+#            -v /raid/data/imseg/raw-data/kits19/preproc-data/:/data \
+#            -v ${SCRIPT_DIR}/output:/results \
+#            -v ${SCRIPT_DIR}/ckpts:/ckpts \
+#            unet3d:dali bash
+
+
+
+docker run --ipc=host --name=$CONTAINER_NAME -it --rm --runtime=nvidia $DOCKER_MEMORY_PARAM \
+	-v "$(pwd)":/workspace/unet3d \
+    -v /raid/data/imseg/raw-data/kits19/data/:/raw_data \
+    -v /raid/data/imseg/raw-data/kits19/preproc-data/:/data \
+	-v ${SCRIPT_DIR}/output:/results \
+	-v ${SCRIPT_DIR}/ckpts:/ckpts \
+	unet3d:dali2 /bin/bash 

@@ -5,19 +5,20 @@ set -e
 # to use the script:
 #   run_and_time.sh <random seed 1-5> <num_gpus>
 
-SEED=${1:--1}
-ddplaunch=$(python -c "from os import path; import torch; print(path.join(path.dirname(torch.__file__), 'distributed', 'launch.py'))")
-NUM_WORKERS=${3:-4}  # Default to 4 workers if not provided
-
+SEED=${1:--1} 
 NUM_GPUS=${2:-8}
-MAX_EPOCHS=10
+BATCH_SIZE=${3:-2}
+NUM_WORKERS=${4:-24}
+NUM_EPOCHS=${5:-10}
+
+
 QUALITY_THRESHOLD="0.908"
-START_EVAL_AT=50
-EVALUATE_EVERY=50
+START_EVAL_AT=5
+EVALUATE_EVERY=5
 LEARNING_RATE="0.8"
 LR_WARMUP_EPOCHS=10
 DATASET_DIR="/data"
-BATCH_SIZE=2
+RAW_DATASET_DIR="/raw_data"
 GRADIENT_ACCUMULATION_STEPS=1
 SAVE_CKPT_PATH="/ckpts"
 
@@ -29,14 +30,19 @@ then
     echo "STARTING TIMING RUN AT $start_fmt"
 
 # CLEAR YOUR CACHE HERE
-  python -c "
+  python3 -c "
 from mlperf_logging.mllog import constants
 from runtime.logging import mllog_event
 mllog_event(key=constants.CACHE_CLEAR, value=True)"
 
-  python $ddplaunch --nnode=1 --node_rank=0 --nproc_per_node=${NUM_GPUS} main.py \
+python3 -c "import torch; print(torch.__version__)"
+
+
+
+
+  torchrun  --nproc_per_node=${NUM_GPUS} main.py \
     --data_dir ${DATASET_DIR} \
-    --epochs ${MAX_EPOCHS} \
+    --epochs  ${NUM_EPOCHS} \
     --evaluate_every ${EVALUATE_EVERY} \
     --start_eval_at ${START_EVAL_AT} \
     --quality_threshold ${QUALITY_THRESHOLD} \

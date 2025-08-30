@@ -7,7 +7,6 @@ import numpy as np
 from queue import Full, Empty
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
-import psutil
 from runtime.distributed_utils import get_rank, get_world_size
 import csv
 
@@ -177,7 +176,7 @@ class AsynchronousLoader(DataLoader):
         data_resume_event.set()  # Pause the producer
         data_stop_event.clear()
 
-        print("Starting new epoch for rank:", self.rank, "queue size", self.queue.qsize)
+        # print("Starting new epoch for rank:", self.rank, "queue size", self.queue.qsize)
 
         return self
     # def __next__(self):

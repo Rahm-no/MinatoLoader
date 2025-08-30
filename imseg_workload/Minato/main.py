@@ -17,6 +17,10 @@ import multiprocessing
 import multiprocessing as mp
 import csv
 import pdb
+
+import psutil
+import signal
+
 from data_loading.data_loader import get_data_split
 from data_loading.pytorch_loader import PytTrain, PytVal
 from runtime.training import train
@@ -64,15 +68,15 @@ DATASET_SIZE = 168
 
 
 def main():
-    throughput_file = "test2.csv"
+    throughput_file = "test_minato.csv"
     with open(throughput_file, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(['epoch','iteration','throughput(MBs)', 'iteration_time', 'time_diff', 'iter_persec'])
     
-    accuracy_file = "accuracy_50epochsoffandon.csv"
-    with open(accuracy_file, 'w', newline='') as csvfile:
-        csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(['epoch', 'accuracy', 'mean dice','l1 dice','l2 dice'])
+    # accuracy_file = "accuracy_50epochsoffandon.csv"
+    # with open(accuracy_file, 'w', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     csv_writer.writerow(['epoch', 'accuracy', 'mean dice','l1 dice','l2 dice'])
 
 
     mllog.config(filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unet3d.log'))
@@ -136,7 +140,7 @@ def main():
         t0 = time.time()
         
         train(flags, model, train_dataloader, val_dataloader, loss_fn, score_fn, 
-              device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file, accuracy_file=accuracy_file)
+              device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file)
         t1 = time.time()
         print('Total training time for total epochs:', t1 - t0)
 
@@ -153,7 +157,24 @@ def main():
 
 
 
- 
+
+def cleanup_processes():
+    parent = psutil.Process(os.getpid())
+    children = parent.children(recursive=True)
+    for child in children:
+        try:
+            print(f"Killing {child.pid} ({child.name()})")
+            child.terminate()  # sends SIGTERM
+        except psutil.NoSuchProcess:
+            pass
+
+    gone, alive = psutil.wait_procs(children, timeout=5)
+    for child in alive:
+        try:
+            print(f"Force killing {child.pid}")
+            child.kill()  # sends SIGKILL
+        except psutil.NoSuchProcess:
+            pass
 
 
 if __name__ == "__main__":
@@ -166,4 +187,4 @@ if __name__ == "__main__":
 
     main()
     print('FINISH')
-    clean()
+    cleanup_processes()

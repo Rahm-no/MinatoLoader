@@ -591,10 +591,55 @@ import torch.multiprocessing as mp
 def get_train_transforms():
     rand_flip = RandFlip()
     cast = Cast(types=(np.float32, np.uint8))
+    heavy_blur = HeavyGaussianBlur(sigma_range=(1, 5))
+    elastic_deform = ElasticDeformation(alpha=1000, sigma=30)
     rand_scale = RandomBrightnessAugmentation(factor=0.3, prob=0.1)
     rand_noise = GaussianNoise(mean=0.0, std=0.1, prob=0.1)
+    
     train_transforms = transforms.Compose([rand_flip, cast, rand_scale, rand_noise])
     return train_transforms
+
+
+
+
+class HeavyGaussianBlur:
+    def __init__(self, sigma_range=(1, 5)):
+        self.sigma_range = sigma_range
+
+    def __call__(self, data):
+        sigma = np.random.uniform(*self.sigma_range)
+        image = data["image"]
+        for c in range(image.shape[0]):
+            image[c] = scipy.ndimage.gaussian_filter(image[c], sigma=sigma)
+        data["image"] = image
+        return data
+
+
+class ElasticDeformation:
+    def __init__(self, alpha, sigma):
+        self.alpha = alpha
+        self.sigma = sigma
+
+    def __call__(self, data):
+        image = data["image"]
+        shape = image.shape[1:]
+
+        # Generate random displacement fields
+        dx = scipy.ndimage.gaussian_filter((np.random.rand(*shape) * 2 - 1), self.sigma) * self.alpha
+        dy = scipy.ndimage.gaussian_filter((np.random.rand(*shape) * 2 - 1), self.sigma) * self.alpha
+        dz = scipy.ndimage.gaussian_filter((np.random.rand(*shape) * 2 - 1), self.sigma) * self.alpha
+
+        # Create meshgrid
+        x, y, z = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), np.arange(shape[2]), indexing='ij')
+        indices = (x + dx).reshape(-1), (y + dy).reshape(-1), (z + dz).reshape(-1)
+
+        # Apply deformation
+        for c in range(image.shape[0]):
+            image[c] = scipy.ndimage.map_coordinates(image[c], indices, order=1, mode='reflect').reshape(shape)
+
+        data["image"] = image
+        return data
+
 
 
 class RandBalancedCrop:
@@ -694,7 +739,6 @@ class RandomBrightnessAugmentation:
 
     def __call__(self, data):
         image = data["image"]
-        # for i in range(10):
         factor = np.random.uniform(low=1.0-self.factor, high=1.0+self.factor, size=1)
         image = (image * (1 + factor)).astype(image.dtype)
         data.update({"image": image})
@@ -727,7 +771,7 @@ def slow_worker(images, labels, patch_size, oversampling, transforms,slow_queue,
         if idx is None:
             break  # Signal to stop
         try:
-            data = {"image": np.load(images[idx]), "label": np.load(labels[idx])}
+            data = {"image": images[idx], "label": labels[idx]}
             data = rand_crop(data)
             for transform in transforms.transforms:
                 data = transform(data)
@@ -742,58 +786,136 @@ from torch.utils.data import Dataset
 import concurrent.futures
 import time
 
+# class PytTrain(Dataset):
+#     def __init__(self, images, labels,slow_queue, slow_processed_queue, **kwargs):
+#         self.images, self.labels = images, labels
+#         self.train_transforms = get_train_transforms()
+#         patch_size, oversampling = kwargs["patch_size"], kwargs["oversampling"]
+#         self.patch_size = patch_size
+#         self.oversampling = oversampling
+#         self.rand_crop = RandBalancedCrop(patch_size=patch_size, oversampling=oversampling)
+#         self.slow_queue = slow_queue
+#         self.slow_processed_queue = slow_processed_queue
+
+#         # Start background slow processing
+#         self.slow_worker_process = mp.Process(
+#             target=slow_worker,
+#             args=(self.images, self.labels, self.patch_size, self.oversampling, self.train_transforms, self.slow_queue, self.slow_processed_queue)
+#         )
+#         self.slow_worker_process.start()
+
+#         # Timeout budget per sample (seconds)
+#         self.sample_timeout = 0.5
+
+#     def __len__(self):
+#         return len(self.images)
+
+#     def _preprocess_sample(self, idx):
+#         """Preprocessing logic."""
+#         data = {"image": np.load(self.images[idx]), "label": np.load(self.labels[idx])}
+#         data = self.rand_crop(data)
+#         for transform in self.train_transforms.transforms:
+#             data = transform(data)
+#         return data["image"], data["label"]
+
+#     def __getitem__(self, idx):
+#         """Try to preprocess sample within a timeout. If fails, move idx to slow queue and skip."""
+#         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+#             future = executor.submit(self._preprocess_sample, idx)
+#             try:
+#                 start_time = time.time()
+#                 image, label = future.result(timeout=self.sample_timeout)
+#                 end_time = time.time()
+#                 # print(f"Sample {idx} processed in {end_time-start_time:.2f}s")
+#                 return image, label
+#             except concurrent.futures.TimeoutError:
+#                 # If timeout, move to slow queue
+#                 self.slow_queue.put(idx)
+#                 return None
+#                 # raise RuntimeError(f"Sample {idx} exceeded timeout and moved to slow queue.")
+
+#     def __del__(self):
+#         # Clean shutdown
+#         self.slow_queue.put(None)
+#         self.slow_worker_process.join()
+
+import os
+import time
+import queue
+import threading
+import multiprocessing as mp
+import numpy as np
+from torch.utils.data import Dataset
+import concurrent.futures
+
 class PytTrain(Dataset):
-    def __init__(self, images, labels,slow_queue, slow_processed_queue, **kwargs):
-        self.images, self.labels = images, labels
+    def __init__(self, images, labels, slow_queue, slow_processed_queue, **kwargs):
+        self.images = images
+        self.labels = labels
         self.train_transforms = get_train_transforms()
-        patch_size, oversampling = kwargs["patch_size"], kwargs["oversampling"]
-        self.patch_size = patch_size
-        self.oversampling = oversampling
-        self.rand_crop = RandBalancedCrop(patch_size=patch_size, oversampling=oversampling)
+        self.patch_size = kwargs["patch_size"]
+        self.oversampling = kwargs["oversampling"]
+        self.rand_crop = RandBalancedCrop(self.patch_size, self.oversampling)
+
         self.slow_queue = slow_queue
         self.slow_processed_queue = slow_processed_queue
+        self.sample_timeout = 0.5  # seconds
 
-        # Start background slow processing
-        self.slow_worker_process = mp.Process(
-            target=slow_worker,
-            args=(self.images, self.labels, self.patch_size, self.oversampling, self.train_transforms, self.slow_queue, self.slow_processed_queue)
-        )
-        self.slow_worker_process.start()
+        # Preload into RAM (or use mmap_mode="r" if too large)
+        self.images_data = [np.load(f, mmap_mode="r") for f in self.images]
+        self.labels_data = [np.load(f, mmap_mode="r") for f in self.labels]
 
-        # Timeout budget per sample (seconds)
-        self.sample_timeout = 0.5
+        # Thread pool executor for enforcing timeouts
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+        # Start slow workers
+        self.slow_workers = [
+            mp.Process(
+                target=slow_worker,
+                args=(self.images_data, self.labels_data,
+                      self.patch_size, self.oversampling,
+                      self.train_transforms,
+                      self.slow_queue, self.slow_processed_queue)
+            ) for _ in range(2)
+        ]
+        for w in self.slow_workers:
+            w.start()
 
     def __len__(self):
         return len(self.images)
 
     def _preprocess_sample(self, idx):
-        """Preprocessing logic."""
-        data = {"image": np.load(self.images[idx]), "label": np.load(self.labels[idx])}
+        """Fast preprocessing path."""
+        data = {"image": self.images_data[idx], "label": self.labels_data[idx]}
         data = self.rand_crop(data)
         for transform in self.train_transforms.transforms:
             data = transform(data)
         return data["image"], data["label"]
 
     def __getitem__(self, idx):
-        """Try to preprocess sample within a timeout. If fails, move idx to slow queue and skip."""
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future = executor.submit(self._preprocess_sample, idx)
-            try:
-                start_time = time.time()
-                image, label = future.result(timeout=self.sample_timeout)
-                end_time = time.time()
-                # print(f"Sample {idx} processed in {end_time-start_time:.2f}s")
-                return image, label
-            except concurrent.futures.TimeoutError:
-                # If timeout, move to slow queue
-                self.slow_queue.put(idx)
-                return None
-                # raise RuntimeError(f"Sample {idx} exceeded timeout and moved to slow queue.")
+        # Submit fast path to thread pool with timeout
+        future = self.executor.submit(self._preprocess_sample, idx)
+        try:
+            return future.result(timeout=self.sample_timeout)
+        except concurrent.futures.TimeoutError:
+            # Send to slow queue if timeout
+            self.slow_queue.put(idx)
+            # try:
+            #     # Try to get result from slow worker
+            #     return self.slow_processed_queue.get(timeout=1)
+            # except queue.Empty:
+            #     # If even slow worker hasn’t produced it yet → skip sample
+            return None
 
-    def __del__(self):
-        # Clean shutdown
-        self.slow_queue.put(None)
-        self.slow_worker_process.join()
+#     def cleanup(self):
+#         for _ in self.slow_workers:
+#             self.slow_queue.put(None)
+#         for w in self.slow_workers:
+#             w.join()
+#         self.executor.shutdown(wait=True)
+
+#     def __del__(self):
+#         self.cleanup()
 
 class PytVal(Dataset):
     def __init__(self, images, labels):

@@ -203,6 +203,7 @@ def rand_balanced_crop(image, label, patch_size, oversampling):
 
  
 import nvidia.dali.fn as fn
+num_flips = 50
 import nvidia.dali.types as types
 from nvidia.dali.pipeline import Pipeline
 from nvidia.dali.pipeline import Pipeline
@@ -220,10 +221,14 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size
 
  # Modified pipeline configuration
     pipe = Pipeline(
-        batch_size=batch_size,
-        num_threads=12,  # Increased to match CPU cores
-        device_id=device_id ,       
-        prefetch_queue_depth=8,  # Increased prefetch depth
+        batch_size=1,          # How many samples per iteration
+        num_threads=48,                 # Increase for heavier CPU-side ops
+        device_id=device_id,            # Which GPU to run on
+        prefetch_queue_depth=2,         # Number of prefetched batches
+        seed=42,                        # Reproducibility
+        exec_pipelined=True,            # Enable pipelining (async)
+        exec_async=True,                # Enable async execution
+        set_affinity=True               # Bind threads to CPU cores
     )
 
     with pipe:
@@ -246,8 +251,8 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size
         labels = fn.crop(labels, crop=patch_size, device="gpu")
 
         # Flip: random axes [x, y, z]
-        for i in range(50):
-            flip_axes = fn.random.coin_flip(probability=0.5, shape=3)
+        for i in range(num_flips):
+            flip_axes = fn.random.coin_flip(probability=1, shape=3)
             images = fn.flip(images, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
             labels = fn.flip(labels, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
 

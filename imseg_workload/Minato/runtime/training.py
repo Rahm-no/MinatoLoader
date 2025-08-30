@@ -40,7 +40,7 @@ def lr_warmup(optimizer, init_lr, lr, current_epoch, warmup_epochs):
         param_group["lr"] = init_lr + (lr - init_lr) * scale
 
 
-def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, callbacks, is_distributed, throughput_file, accuracy_file):
+def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, callbacks, is_distributed, throughput_file):
     rank = get_rank()
     start_training_time = time.time()
   
@@ -95,15 +95,15 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
             size += calculate_tensor_size(image) + calculate_tensor_size(label)     
 
             image, label = image.to(device), label.to(device)
-            print(f"Image dtype: {image.dtype}, shape: {image.shape}")
-            print(f"Label dtype: {label.dtype}, shape: {label.shape}")
+            # print(f"Image dtype: {image.dtype}, shape: {image.shape}")
+            # print(f"Label dtype: {label.dtype}, shape: {label.shape}")
     
 
             with autocast(enabled=flags.amp):
                 output = model(image)
                 loss_value = loss_fn(output, label)
                 loss_value /= flags.ga_steps
-                print("loss_value in speedy", loss_value)
+                # print("loss_value in speedy", loss_value)
 
             if flags.amp:
                 scaler.scale(loss_value).backward()
@@ -168,8 +168,8 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
                         value=eval_metrics["mean_dice"], 
                         metadata={CONSTANTS.EPOCH_NUM: epoch}, 
                         sync=False)
-            with open(accuracy_file, 'a', newline='') as f:
-                f.write(f"{epoch},{eval_metrics['mean_dice']},{eval_metrics['L1 dice']},{eval_metrics['L2 dice']}\n")
+            # with open(accuracy_file, 'a', newline='') as f:
+            #     f.write(f"{epoch},{eval_metrics['mean_dice']},{eval_metrics['L1 dice']},{eval_metrics['L2 dice']}\n")
             mllog_end(key=CONSTANTS.EVAL_STOP, metadata={CONSTANTS.EPOCH_NUM: epoch}, sync=False)
 
             for callback in callbacks:
@@ -178,7 +178,7 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
             if eval_metrics["mean_dice"] >= flags.quality_threshold:
                 is_successful = True
             elif eval_metrics["mean_dice"] < 1e-6:
-                print("MODEL DIVERGED. ABORTING.")
+                # print("MODEL DIVERGED. ABORTING.")
                 diverged = True
 
         mllog_end(key=CONSTANTS.BLOCK_STOP, sync=False,
