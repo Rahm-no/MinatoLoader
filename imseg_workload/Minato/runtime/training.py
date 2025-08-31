@@ -9,7 +9,7 @@ from runtime.distributed_utils import get_rank, reduce_tensor, get_world_size
 from runtime.inference import evaluate
 from runtime.logging import mllog_event, mllog_start, mllog_end, CONSTANTS
 
-
+import datetime
 def get_optimizer(params, flags):
     if flags.optimizer == "adam":
         optim = Adam(params, lr=flags.learning_rate, weight_decay=flags.weight_decay)
@@ -134,8 +134,9 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
                   
                 )
                 with open(throughput_file, 'a', newline='') as f:
-                    f.write(f"{epoch},{n},{throughput},{time.time() - start_training_time},{time.time() - last_time}, {iter_persec},{size}\n")
-                
+                    total_train_time = time.time() - start_training_time
+                    f.write(f"{epoch},{n},{throughput},{total_train_time},{time.time() - last_time}, {iter_persec},{size}\n")
+
 
                 last_time = time.time()
                 last_n = n
@@ -189,6 +190,21 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
 
     mllog_end(key=CONSTANTS.RUN_STOP, sync=True,
               metadata={CONSTANTS.STATUS: CONSTANTS.SUCCESS if is_successful else CONSTANTS.ABORTED})
+    # only rank 0 writes results
+    if rank == 0:
+        SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+        ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+        result_file = os.path.join(ROOT_DIR, "results_allsystems.csv")
+
+        # Ensure file exists with header
+        if not os.path.exists(result_file):
+            with open(result_file, "w") as f:
+                f.write("timestamp,system,seconds\n")
+
+        # Append result with timestamp
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(result_file, "a") as f:
+            f.write(f"{timestamp},Minato,{total_train_time:.2f}\n")
 
     for callback in callbacks:
         callback.on_fit_end()

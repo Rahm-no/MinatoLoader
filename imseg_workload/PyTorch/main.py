@@ -22,15 +22,15 @@ DATASET_SIZE = 1462
 
 
 def main():
-    throughput_file = "test.csv"
+    throughput_file = "test_Pytorch.csv"
     with open(throughput_file, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(['epoch','iteration','throughput(MBs)', 'iteration_time', 'time_diff', 'iter_persec'])
     
-    accuracy_file = "accuracy_50ep_pytorch_testram.csv"
-    with open(accuracy_file, 'w', newline='') as csvfile:
-        csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(['epoch', 'accuracy', 'mean dice','l1 dice','l2 dice'])
+    # accuracy_file = "accuracy_50ep_pytorch_testram.csv"
+    # with open(accuracy_file, 'w', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     csv_writer.writerow(['epoch', 'accuracy', 'mean dice','l1 dice','l2 dice'])
 
     mllog.config(filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'unet3d.log'))
     mllog.config(filename=os.path.join("/results", 'unet3d.log'))
@@ -83,7 +83,7 @@ def main():
 
     if flags.exec_mode == 'train':
         train(flags, model, train_dataloader, val_dataloader, loss_fn, score_fn, 
-              device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file,accuracy_file=accuracy_file)
+              device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file)
 
     elif flags.exec_mode == 'evaluate':
         eval_metrics = evaluate(flags, model, val_dataloader, loss_fn, score_fn,

@@ -65,6 +65,7 @@ python3 -c "import torch; print(torch.__version__)"
 	# report result
 	result=$(( $end - $start ))
 	result_name="image_segmentation"
+  
 
 
 	echo "RESULT,$result_name,$SEED,$result,$USER,$start_fmt"

@@ -33,5 +33,4 @@ start_time=$(date +%s)
 
 end_time=$(date +%s)
 duration=$((end_time - start_time))
-echo "Duration: ${duration} seconds"
 echo "GPU/CPU usage log: $USAGE_LOG"

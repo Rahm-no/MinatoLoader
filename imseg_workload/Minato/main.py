@@ -17,6 +17,8 @@ import multiprocessing
 import multiprocessing as mp
 import csv
 import pdb
+import datetime
+datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
 
 import psutil
 import signal
@@ -142,7 +144,8 @@ def main():
         train(flags, model, train_dataloader, val_dataloader, loss_fn, score_fn, 
               device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file)
         t1 = time.time()
-        print('Total training time for total epochs:', t1 - t0)
+        total_time = t1 - t0
+     
 
     elif flags.exec_mode == 'evaluate':
         eval_metrics = evaluate(flags, model, val_dataloader, loss_fn, score_fn,
@@ -163,7 +166,7 @@ def cleanup_processes():
     children = parent.children(recursive=True)
     for child in children:
         try:
-            print(f"Killing {child.pid} ({child.name()})")
+            print(f"Joining {child.pid} ({child.name()})")
             child.terminate()  # sends SIGTERM
         except psutil.NoSuchProcess:
             pass
@@ -171,7 +174,7 @@ def cleanup_processes():
     gone, alive = psutil.wait_procs(children, timeout=5)
     for child in alive:
         try:
-            print(f"Force killing {child.pid}")
+            print(f"Joining {child.pid}")
             child.kill()  # sends SIGKILL
         except psutil.NoSuchProcess:
             pass

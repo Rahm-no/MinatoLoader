@@ -8,51 +8,90 @@
 
 ## 2. Execution Environment
 
-Our experiments were run on the following environment:
-
-- **Operating System**: xx
-- **CPU**:xx
-- **RAM**: xx
-- **GPU**:xx
-- **Storage**: xx
-
+This experiment were run on the following environment:
+- **Operating System**: Ubuntu 20.04.6 LTS (Focal Fossa), Linux kernel 5.15.0-1066-oracle
+- **CPU**:2 × Intel(R) Xeon(R) CPU E5-2698 v4 @ 2.20GHz  (20 cores per socket × 2 sockets × 2 threads = 80 CPUs total)
+- **RAM**: 503 GiB
+- **GPU**: 8 × NVIDIA Tesla V100-SXM2-32GB
+- **Storage**: 
+  - 446 GB SSD (mounted at `/`)
+  - 7 TB disk (mounted at `/raid`)
 **Software Stack**:
-- NVIDIA Driver: xx
-- CUDA: xx
-- cuDNN: xx
-- PyTorch: xx
-- NVIDIA DALI: xx
-- Python: xx
-- Docker: xx
-
-We also verified functionality on a smaller setup:
-- xx
-- xx
-
-## 3. A description of each artifact component and how it relates to the paper
+- NVIDIA Driver:  560.35.05   
+- CUDA: 12.6  
+- cuDNN: 8.9.7
+- PyTorch: 2.4.1
+- Python: 3.8.10
+- Docker: 28.1.1
 
 
-## 4. Introduction 
-This work presents 3D-UNet workload using three systems: PyTorch, DALI and Minato. 
+## 3. Description of Artifact Components and Relation to the Paper
+
+This artifact is organized under the `imseg_workload/` directory, which contains one main workload (3D U-Net for image segmentation) and three system implementations. These correspond to the data loading frameworks compared in the paper:  
+1. **PyTorch DataLoader** (`imseg_workload/PyTorch`)  
+2. **NVIDIA DALI** (`imseg_workload/DALI`)  
+3. **MinatoLoader (our system)** (`imseg_workload/Minato`)  
+
+Each system subdirectory follows the same structure:  
+- **`data_loading/`** – Implements the data loading phase.  
+- **`model/`** – Contains the U-Net3D model components.  
+- **`runtime/`** – Implements the training and inference routines.  
+- **`main.py`** – Entry point script for running the full pipeline, from data loading and distribution initialization to training.  
+- **`run_and_time.sh`** - Running the workload.
+- **`run_dali.sh`, `run_minato.sh`, and `run_pytorch.sh`** scripts to run the each workload. 
+---
+
+## Repository Contents
+
+In `imseg_workload/` directory, the most relevant files are:  
+- **`checksum.json`** – List of dataset cases and checksums for completeness verification.  
+- **`preprocess_data.py`** – Converts the dataset to NumPy format for training.  
+- **`requirements.txt`** – Python dependencies for running 3D U-Net.  
+- **`Dockerfile`** – Container setup with the required dependencies.  
+- **`start_container.sh`** – Script to start the container environment.  
+- **`cpu_gpu_usage.sh`** - Outputs a csv file of the average CPU and GPU usage over time.
 
 
-This benchmark represents a 3D medical image segmentation task using [2019 Kidney Tumor Segmentation Challenge](https://kits19.grand-challenge.org/) dataset called [KiTS19](https://github.com/neheller/kits19). The task is carried out using a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant based on the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper.
+
+Within each system subdirectory (`DALI`, `PyTorch`, `Minato`):  
+- **`main.py`** – Main entry point encapsulating the training pipeline.  
+- **`evaluation_cases.txt`** – Fixed split of dataset cases used for evaluation.  
+
+### Data Loading Components (`data_loading/`)
+- **`data_loader.py`** – Base implementation of the data loading interface.  
+- **`pytorch_loader.py`** – Data augmentation and iterators for PyTorch.  
+- **`nvidia_daliloader.py`** – Data pipeline implementation for DALI.  
+- **`Asynchronous_dataloader.py`** – MinatoLoader implementation with asynchronous logic.  
+
+### Model Components (`model/`)
+- **`layers.py`** – Building blocks for assembling U-Net3D.  
+- **`losses.py`** – Training and evaluation loss functions.  
+- **`unet3d.py`** – U-Net3D model definition built from `layers.py`.  
+
+### Runtime Components (`runtime/`)
+- **`arguments.py`** – Command-line argument parsing.  
+- **`callbacks.py`** – Callbacks for performance tracking, evaluation, and checkpointing.  
+- **`distributed_utils.py`** – Utilities for distributed training.  
+- **`inference.py`** – Evaluation loop and sliding-window inference.  
+- **`logging.py`** – MLPerf-compatible logging utilities.  
+- **`training.py`** – Training loop implementation.  
 
 
-The data is stored in the [KiTS19 github repository](https://github.com/neheller/kits19).
+## 4. Benchmark & Dataset 
+
+This benchmark represents a 3D medical image segmentation task using [2019 Kidney Tumor Segmentation Challenge](https://kits19.grand-challenge.org/) dataset called [KiTS19](https://github.com/neheller/kits19). The task is carried out using a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant based on the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper.The data is stored in the [KiTS19 github repository](https://github.com/neheller/kits19). This code is taken from the [MLCommons Training Image Segmentation Workload](https://github.com/mlcommons/training/tree/master/image_segmentation/pytorch).   
 
 ## Steps to download and preprocess the data
 1. Clone the MinatoLoader Eurosys  repo
 ```bash 
 git clone git@github.com:Rahm-no/MinatoLoader.git
 ```
-2. Build docker image 
+2. Build docker image [This step will take X min  ]
 ```bash 
 cd imseg_workload
 docker build -t minato:latest .
-./start_container.sh 
 ```
-3. Download the data
+3. Download the data [This step will take X min and 27GB in storage ]
    
     To download the data please follow the instructions:
     ```bash
@@ -65,8 +104,22 @@ docker build -t minato:latest .
     ```
     This will download the original, non-interpolated data to `raw-data-dir/kits19/data`
 
+3. Start an interactive session in the container to run preprocessing/training.
+
+    You will need to mount two (or three) directories:
+
+    for raw data (RAW-DATA-DIR)
+    for preprocessed data (PREPROCESSED-DATA-DIR)
+    (optionally) for results (RESULTS-DIR)
+
+
+    ```bash 
+    mkdir data
+    mkdir results
+    ./start_container.sh
+    ```
  
-2. Preprocess the dataset.
+2. Preprocess the dataset [This step will take XMIN and 29GB of storage].
    
     
     The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
@@ -74,99 +127,37 @@ docker build -t minato:latest .
     python3 preprocess_dataset.py --data_dir /raw_data --results_dir /data
     ```
    
-    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source.
+    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
-<!-- 2. Start an interactive session in the container to run preprocessing/training/inference.
- 
-    You will need to mount two (or three) directories:
-    - for raw data (RAW-DATA-DIR) 
-    - for preprocessed data (PREPROCESSED-DATA-DIR)
-    - (optionally) for results (RESULTS-DIR)
-    
-    ```bash
-    mkdir data
-    mkdir results
-   -->
-    ```
-<!-- 
-## Steps to run and time
 
-The basic command to run on 1 worker takes form:
+## 4. Running the Systems
+
+This section explains how to run the artifact and reproduce a minimal running example.   All experiments must be executed **inside the provided Docker container**. The examples provided are intentionally minimal to respect the evaluators’ time while still demonstrating correctness and reproducibility.
+
+### Step 1: Start the Container
+First, make sure the Docker image has been built using the provided `Dockerfile`.  
+Then, launch the container with:
+
 ```bash
-bash run_and_time.sh <SEED>
+./start_container.sh
 ```
+This script will start the container and mount the repository. Once inside, you will find yourself in the directory of the artifact: `imseg-workload` 
+### Step 2: Choose the System to Run
+Navigate into the system directory you want to evaluate. 
+For example: ```cd DALI ```
+### Step 3: Run the Training Script
+Each system provides a wrapper script to launch training:
 
-The script assumes that the data is available at `/data` directory.
+```bash run_SYSTEM.sh NUM_GPUs```
 
-Running this command for seeds in range `{0, 1, ..., 9}` should converge to the target accuracy `mean_dice` = 0.908. 
-The training will be terminated once the quality threshold is reached or the maximum number of epochs is surpassed. 
-If needed, those variables can be modified within the `run_and_time.sh` script.
+Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 1, 4, or 8).
 
+Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```
+with 8 GPUs, running DALI took 174 s, Minato took around 85 seconds, and PyTorch takes X s. 
 
-## Repository content
- 
-In the root directory, the most important files are:
-* `main.py`: Serves as the entry point to the application. Encapsulates the training routine.
-* `Dockerfile`: Container with the basic set of dependencies to run U-Net3D.
-* `requirements.txt`: Set of extra requirements for running U-Net3D.
-* `preprocess_data.py`: Converts the dataset to numpy format for training.
-* `evaluation_cases.txt`: A list of cases used for evaluation - a fixed split of the whole dataset.
-* `checksum.json`: A list of cases and their checksum for dataset completeness verification.
- 
-The `data_loading/` folder contains the necessary load data. Its main components are:
-* `data_loader.py`: Implements the data loading.
-* `pytorch_loader.py`: Implements the data augmentation and iterators.
- 
-The `model/` folder contains information about the building blocks of U-Net3D and the way they are assembled. Its contents are:
-* `layers.py`: Defines the different blocks that are used to assemble U-Net3D.
-* `losses.py`: Defines the different losses used during training and evaluation.
-* `unet3d.py`: Defines the model architecture using the blocks from the `layers.py` file.
+### Step 4: Evaluate Results
 
-The `runtime/` folder contains scripts with training and inference logic. Its contents are:
-* `arguments.py`: Implements the command-line arguments parsing.
-* `callbacks.py`: Collection of performance, evaluation, and checkpoint callbacks.
-* `distributed_utils.py`: Defines a set of functions used for distributed training.
-* `inference.py`: Defines the evaluation loop and sliding window.
-* `logging.py`: Defines the MLPerf logger.
-* `training.py`: Defines the training loop.
+When you launch a run, the system will: Train a 3D U-Net model on the preprocessed dataset, Log training throughput, CPU/GPU utilization, and total runtime. Save model checkpoints under the ckpts/ directory.
 
- 
-# 3. Quality
+For faster training time, we report time-to-train with 8 GPUs across all systems. However, you can also run with fewer GPUs (e.g., bash run_pytorch.sh 2) but it will take more time. 
 
-## Quality metric
-
-The quality metric in this benchmark is mean (composite) DICE score for classes 1 (kidney) and 2 (kidney tumor). 
-The metric is reported as `mean_dice` in the code.
-
-## Quality target
-
-The target `mean_dice` is 0.908.
-
-## Evaluation frequency
-
-The evaluation schedule depends on the number of samples processed per epoch. Since the dataset is fairly small, and the
-global batch size respectively large, the last batch (padded or dropped) can represent a sizable fraction of the whole dataset.
-This implementation assumes that the last batch is always dropped. The evaluation schedule depends on the `samples per epoch` in the following manner:
-- for epochs 1 to CEILING(1000*168/`samples per epoch`) - 1: Do not evaluate
-- for epochs >= CEILING(1000\*168/`samples per epoch`): Evaluate every CEILING(20\*168/`samples per epoch`) epochs
-
-Two examples:
-1. Global batch size = 32:
-- `samples per epoch` = 160, since the last batch of 8 is dropped
-- evaluation starts at epoch = 1050
-- evaluation is run every 21 epochs
-
-2. Global batch size = 128:
-- `samples per epoch` = 128, since the last batch of 40 is dropped
-- evaluation starts at epoch = 1313
-- evaluation is run every 27 epochs
-
-The training should stop at epoch = CEILING(10000\*168/`samples per epoch`). If the model has not converged by that 
-epoch the run is considered as non-converged.
-
-## Evaluation thoroughness
-
-The validation dataset is composed of 42 volumes. They were pre-selected, and their IDs are stored in the `evaluation_cases.txt` file.
-A valid score is obtained as an average `mean_dice` score across the whole 42 volumes. Please mind that a multi-worker training in popular frameworks is using so-called samplers to shard the data.
-Such samplers tend to shard the data equally across all workers. For convenience, this is achieved by either truncating the dataset, so it is divisible by the number of workers,
-or the "missing" data is copied. This most likely will influence the final score - a valid evaluation is performed on exactly 42 volumes and each volume's score has a weight of 1/42 of the total sum of the scores.  -->

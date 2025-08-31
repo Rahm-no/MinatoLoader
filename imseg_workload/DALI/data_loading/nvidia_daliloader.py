@@ -192,6 +192,7 @@ import nvidia.dali.fn as fn
 import nvidia.dali.types as types
 import random
 import numpy as np
+num_trials=50
 from nvidia.dali.pipeline import Pipeline
 
 # Custom transformation to handle RandBalancedCrop (can be complex, might need custom operator)
@@ -203,7 +204,6 @@ def rand_balanced_crop(image, label, patch_size, oversampling):
 
  
 import nvidia.dali.fn as fn
-num_flips = 50
 import nvidia.dali.types as types
 from nvidia.dali.pipeline import Pipeline
 from nvidia.dali.pipeline import Pipeline
@@ -221,14 +221,10 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size
 
  # Modified pipeline configuration
     pipe = Pipeline(
-        batch_size=1,          # How many samples per iteration
-        num_threads=48,                 # Increase for heavier CPU-side ops
-        device_id=device_id,            # Which GPU to run on
-        prefetch_queue_depth=2,         # Number of prefetched batches
-        seed=42,                        # Reproducibility
-        exec_pipelined=True,            # Enable pipelining (async)
-        exec_async=True,                # Enable async execution
-        set_affinity=True               # Bind threads to CPU cores
+        batch_size=1,
+        num_threads=12,  # Increased to match CPU cores
+        device_id=device_id ,       
+        prefetch_queue_depth=8,  # Increased prefetch depth
     )
 
     with pipe:
@@ -251,7 +247,13 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size
         labels = fn.crop(labels, crop=patch_size, device="gpu")
 
         # Flip: random axes [x, y, z]
-        for i in range(num_flips):
+        for i in range(num_trials):
+              # Gaussian noise + blur
+            images = fn.gaussian_blur(
+                images + fn.random.normal(images, stddev=0.05),
+                window_size=33,
+                sigma=fn.random.uniform(range=[0.5, 1.5])
+            )
             flip_axes = fn.random.coin_flip(probability=1, shape=3)
             images = fn.flip(images, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
             labels = fn.flip(labels, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
@@ -264,12 +266,7 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size
             contrast_center=128
         )
 
-        # Gaussian noise + blur
-        images = fn.gaussian_blur(
-            images + fn.random.normal(images, stddev=0.05),
-            window_size=3,
-            sigma=fn.random.uniform(range=[0.5, 1.5])
-        )
+      
 
         angle = fn.random.uniform(range=[-10.0, 10.0])  # small 3D rotation
         matrix = fn.transforms.rotation(angle=angle, axis=[0.0, 0.0, 1.0])  # rotate in XY

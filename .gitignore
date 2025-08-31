@@ -1,6 +1,6 @@
 # Ignore everything under results (no exceptions now)
 results/**
-
+imseg_workload/results/**
 # Ignore CSV/PDF anywhere
 *.csv
 *.pdf

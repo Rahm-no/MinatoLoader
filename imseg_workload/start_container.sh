@@ -7,3 +7,12 @@ docker run --ipc=host --name=train_imseg -it --rm --runtime=nvidia \
     minato:latest
 
 
+# docker run --ipc=host --name=train_imseg -it --rm --runtime=nvidia \
+#     -v  RAW-DATA-DIR:/raw_data \
+#     -v PREPROCESSED-DATA-DIR:/data \
+#     -v $(pwd)/results:/results \
+#     -v $(pwd)/ckpts:/ckpts \
+#     -v $(pwd):/workspace/unet3d \
+#     minato:latest
+
+

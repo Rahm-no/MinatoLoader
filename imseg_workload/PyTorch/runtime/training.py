@@ -39,7 +39,7 @@ def lr_warmup(optimizer, init_lr, lr, current_epoch, warmup_epochs):
         param_group["lr"] = init_lr + (lr - init_lr) * scale
 
 
-def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, callbacks, is_distributed, throughput_file, accuracy_file):
+def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, callbacks, is_distributed, throughput_file):
     rank = get_rank()
     start_training_time = time.time()
   
@@ -178,18 +178,18 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
         if epoch == next_eval_at:
             next_eval_at += flags.evaluate_every
             del output
-            mllog_start(key=CONSTANTS.EVAL_START, value=epoch, metadata={CONSTANTS.EPOCH_NUM: epoch}, sync=False)
+            # mllog_start(key=CONSTANTS.EVAL_START, value=epoch, metadata={CONSTANTS.EPOCH_NUM: epoch}, sync=False)
 
             eval_metrics = evaluate(flags, model, val_loader, loss_fn, score_fn, device, epoch)
             eval_metrics["train_loss"] = sum(cumulative_loss) / len(cumulative_loss)
-            with open(accuracy_file, 'a', newline='') as f:
-                f.write(f"{epoch},{eval_metrics['mean_dice']},{eval_metrics['L1 dice']},{eval_metrics['L2 dice']}\n")
+            # with open(accuracy_file, 'a', newline='') as f:
+            #     f.write(f"{epoch},{eval_metrics['mean_dice']},{eval_metrics['L1 dice']},{eval_metrics['L2 dice']}\n")
             
-            mllog_event(key=CONSTANTS.EVAL_ACCURACY, 
-                        value=eval_metrics["mean_dice"], 
-                        metadata={CONSTANTS.EPOCH_NUM: epoch}, 
-                        sync=False)
-            mllog_end(key=CONSTANTS.EVAL_STOP, metadata={CONSTANTS.EPOCH_NUM: epoch}, sync=False)
+            # mllog_event(key=CONSTANTS.EVAL_ACCURACY, 
+            #             value=eval_metrics["mean_dice"], 
+            #             metadata={CONSTANTS.EPOCH_NUM: epoch}, 
+            #             sync=False)
+            # mllog_end(key=CONSTANTS.EVAL_STOP, metadata={CONSTANTS.EPOCH_NUM: epoch}, sync=False)
 
             for callback in callbacks:
                 callback.on_epoch_end(epoch=epoch, metrics=eval_metrics, model=model, optimizer=optimizer)

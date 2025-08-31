@@ -13,14 +13,22 @@ NUM_EPOCHS=${5:-10}
 
 
 QUALITY_THRESHOLD="0.908"
-START_EVAL_AT=5
-EVALUATE_EVERY=5
+START_EVAL_AT=10
+EVALUATE_EVERY=10
 LEARNING_RATE="0.8"
 LR_WARMUP_EPOCHS=10
 DATASET_DIR="/data"
 RAW_DATASET_DIR="/raw_data"
 GRADIENT_ACCUMULATION_STEPS=1
 SAVE_CKPT_PATH="/ckpts"
+
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+echo "Root dir: $ROOT_DIR"
+
+result_file="${ROOT_DIR}/results_allsystems.csv"   # <-- FIXED
+
 
 if [ -d ${DATASET_DIR} ]
 then
@@ -64,6 +72,21 @@ python3 -c "import torch; print(torch.__version__)"
 	# report result
 	result=$(( $end - $start ))
 	result_name="image_segmentation"
+
+  # report result
+  result=$(( end - start ))
+  result_name="image_segmentation"
+  line="$end_fmt,PyTorch,$result"
+
+  echo "RESULT,$line"   # print to console
+
+  # create results file with header if not exists
+  if [ ! -f "$result_file" ]; then
+      echo "timestamp,system,seconds" > "$result_file"
+  fi
+
+  # append row
+  echo "$line" >> "$result_file"
 
 
 	echo "RESULT,$result_name,$SEED,$result,$USER,$start_fmt"

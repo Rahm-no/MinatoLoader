@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# runs benchmark and reports time to convergence
-# to use the script:
-#   run_and_time.sh <random seed 1-5> <num_gpus>
-
-
 SEED=${1:--1} 
 NUM_GPUS=${2:-8}
 MAX_EPOCHS=10
@@ -19,6 +14,14 @@ BATCH_SIZE=2
 GRADIENT_ACCUMULATION_STEPS=1
 SAVE_CKPT_PATH="/ckpts"
 
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+echo "Root dir: $ROOT_DIR"
+
+result_file="${ROOT_DIR}/results_allsystems.csv"   # <-- FIXED
+
+
 if [ -d ${DATASET_DIR} ]
 then
     # start timing
@@ -26,13 +29,13 @@ then
     start_fmt=$(date +%Y-%m-%d\ %r)
     echo "STARTING TIMING RUN AT $start_fmt"
 
-# CLEAR YOUR CACHE HERE
-  python3 -c "
+    # CLEAR YOUR CACHE HERE
+    python3 -c "
 from mlperf_logging.mllog import constants
 from runtime.logging import mllog_event
 mllog_event(key=constants.CACHE_CLEAR, value=True)"
 
- torchrun --nproc_per_node=${NUM_GPUS} main.py \
+    torchrun --nproc_per_node=${NUM_GPUS} main.py \
         --data_dir ${DATASET_DIR} \
         --epochs ${MAX_EPOCHS} \
         --evaluate_every ${EVALUATE_EVERY} \
@@ -47,18 +50,26 @@ mllog_event(key=constants.CACHE_CLEAR, value=True)"
         --save_ckpt_path ${SAVE_CKPT_PATH} \
         --num_workers 2
 
-	# end timing
-	end=$(date +%s)
-	end_fmt=$(date +%Y-%m-%d\ %r)
-	echo "ENDING TIMING RUN AT $end_fmt"
+    # end timing
+    end=$(date +%s)
+    end_fmt=$(date +%Y-%m-%d\ %r)
+    echo "ENDING TIMING RUN AT $end_fmt"
 
+    # report result
+    result=$(( end - start ))
+    result_name="image_segmentation"
+    line="$end_fmt,DALI,$result"
 
-	# report result
-	result=$(( $end - $start ))
-	result_name="image_segmentation"
+    echo "RESULT,$line"   # print to console
 
+    # create results file with header if not exists
+    if [ ! -f "$result_file" ]; then
+        echo "timestamp,system,seconds" > "$result_file"
+    fi
 
-	echo "RESULT,$result_name,$SEED,$result,$USER,$start_fmt"
+    # append row
+    echo "$line" >> "$result_file"
+
 else
-	echo "Directory ${DATASET_DIR} does not exist"
+    echo "Directory ${DATASET_DIR} does not exist"
 fi

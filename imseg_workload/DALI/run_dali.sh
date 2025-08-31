@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "Root dir: $ROOT_DIR"
 
 # Log file for GPU/CPU usage
-USAGE_LOG="${ROOT_DIR}/cpu_gpu_usage_dali.log"
+USAGE_LOG="${SCRIPT_DIR}/gpu_cpu_usage_dali.csv"
 
 # Start cpu_gpu_usage in background
 "${ROOT_DIR}/cpu_gpu_usage.sh" "$NUM_GPUS" "$USAGE_LOG" &
