@@ -1,6 +1,7 @@
 # Ignore everything under results (no exceptions now)
 results/**
 imseg_workload/results/**
+
 # Ignore CSV/PDF anywhere
 *.csv
 *.pdf
@@ -9,4 +10,8 @@ imseg_workload/results/**
 *.log
 *.log.*
 imseg_workload/DALI_prev/
+# Ignore checkpoints
+imseg_workload/ckpts/*
+
+
 
