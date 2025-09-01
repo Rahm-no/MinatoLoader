@@ -120,7 +120,7 @@ docker build -t minato:latest .
     ./start_container.sh
     ```
  
-2. Preprocess the dataset [This step will take XMIN and 29GB of storage].
+2. Preprocess the dataset [This step will take 15 min and 29GB of storage].
    
     
     The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
