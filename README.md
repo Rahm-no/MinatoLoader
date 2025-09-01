@@ -178,7 +178,7 @@ Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replac
 Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
 With 8 GPUs, running DALI took 155 s, Minato took around 85 seconds, and PyTorch takes 250 s. 
 
-## Evaluate Results
+## 5. Evaluate Results
 
 When you launch a run, the system will automatically:  
 - **Train a 3D U-Net model** on the preprocessed dataset,  
