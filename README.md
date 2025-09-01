@@ -170,7 +170,8 @@ Navigate into the system directory you want to evaluate. For example: ```cd DALI
 ### Step 3: Run the Training Script
 Each system provides a wrapper script to launch training:
 
-```bash run_SYSTEM.sh NUM_GPUs```
+``` bash 
+run_SYSTEM.sh NUM_GPUs```
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
 Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
