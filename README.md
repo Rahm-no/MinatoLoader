@@ -145,7 +145,7 @@ In both cases, the **final step is evaluating results and plotting figures**.
 
 ---
 
-### Step 1: Start the Container
+### Step 1: Start the container
 First, make sure the Docker image has been built using the provided `Dockerfile`.  
 Then, launch the container with:
 
@@ -153,7 +153,7 @@ Then, launch the container with:
 ./start_container.sh
 ```
 This script will start the container and mount the repository. Once inside, you will find yourself in the directory of the artifact: `imseg-workload`.
-## Option A: Run All Systems at Once
+### Option A: Run All Systems at Once 
 
 To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
 ``` bash 
@@ -163,11 +163,11 @@ To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
 
 * Example (on a node with 8×V100 GPUs): ``` ./run_all.sh 8 ```
 
-## Option B: Run each system
-### Step 2: Choose the System to Run 
+### Option B: Run each system
+### Step 2: Choose the system to run 
 Navigate into the system directory you want to evaluate. For example: ```cd DALI ```
 
-### Step 3: Run the Training Script
+### Step 3: Run the training script
 Each system provides a wrapper script to launch training:
 
 ``` bash 
