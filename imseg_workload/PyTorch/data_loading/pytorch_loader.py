@@ -10,8 +10,8 @@ def get_train_transforms():
 
     rand_flip = RandFlip()
     cast = Cast(types=(np.float32, np.uint8))
-    rand_scale = RandomBrightnessAugmentation(factor=0.3, prob=0.1)
-    rand_noise = GaussianNoise(mean=0.0, std=0.1, prob=0.1)
+    rand_scale = RandomBrightnessAugmentation(factor=0.3, prob=1)
+    rand_noise = GaussianNoise(mean=0.0, std=0.1, prob=1)
     heavy_blur = HeavyGaussianBlur(sigma_range=(1, 5))
     elastic_deform = ElasticDeformation(alpha=1, sigma=5)
     rand_noise = transforms.Compose([rand_noise])
@@ -71,7 +71,7 @@ class RandBalancedCrop:
             image_new, label_new, cords_new = self.rand_foreg_cropd(image, label)
         
             image1, label1, cords1 = self._rand_crop(image, label)
-        print("image_new.shape", image_new.shape)
+        # print("image_new.shape", image_new.shape)
         data.update({"image": image_new, "label": label_new})
         return data
 
@@ -84,7 +84,7 @@ class RandBalancedCrop:
 
     def _rand_crop(self, image, label):
         ranges = [s - p for s, p in zip(image.shape[1:], self.patch_size)]
-        print("ranges", ranges)
+        # print("ranges", ranges)
         cord = [self.randrange(x) for x in ranges]
         low_x, high_x = self.get_cords(cord, 0)
         low_y, high_y = self.get_cords(cord, 1)
@@ -129,7 +129,7 @@ class RandBalancedCrop:
 class RandFlip:
     def __init__(self):
         self.axis = [1, 2, 3]
-        self.prob = 1 / len(self.axis)
+        self.prob = 1 
 
     def flip(self, data, axis):
         data["image"] = np.flip(data["image"], axis=axis).copy()
@@ -148,12 +148,12 @@ class Cast:
         self.types = types
 
     def __call__(self, data):
-        print("data['image'].dtype before cast", data["image"].dtype)
-        print("data['label'].dtype before cast", data["label"].dtype)
-        data["image"] = data["image"].astype(self.types[0])
+        # print("data['image'].dtype before cast", data["image"].dtype)
+        # print("data['label'].dtype before cast", data["label"].dtype)
+        # data["image"] = data["image"].astype(self.types[0])
         data["label"] = data["label"].astype(self.types[1])
-        print("data['image'].dtype after cast", data["image"].dtype)
-        print("data['label'].dtype after cast", data["label"].dtype)
+        # print("data['image'].dtype after cast", data["image"].dtype)
+        # print("data['label'].dtype after cast", data["label"].dtype)
         return data
 
 

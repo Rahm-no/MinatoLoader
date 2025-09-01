@@ -56,10 +56,8 @@ python3 -c "import torch; print(torch.__version__)"
     --save_ckpt_path ${SAVE_CKPT_PATH} \
     --num_workers ${NUM_WORKERS}
 
-	# end timing
-	end=$(date +%s)
-	end_fmt=$(date +%Y-%m-%d\ %r)
-	echo "ENDING TIMING RUN AT $end_fmt"
+    # end timing
+    end=$(date +%s)
 
 
 	# report result
@@ -68,7 +66,6 @@ python3 -c "import torch; print(torch.__version__)"
   
 
 
-	echo "RESULT,$result_name,$SEED,$result,$USER,$start_fmt"
 else
 	echo "Directory ${DATASET_DIR} does not exist"
 fi

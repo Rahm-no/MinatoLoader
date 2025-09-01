@@ -130,7 +130,7 @@ docker build -t minato:latest .
     The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
 
-## 4. Running the Systems
+## 4. Running each Systems
 
 This section explains how to run the artifact and reproduce a minimal running example.   All experiments must be executed **inside the provided Docker container**. The examples provided are intentionally minimal to respect the evaluators’ time while still demonstrating correctness and reproducibility.
 
@@ -153,7 +153,7 @@ Each system provides a wrapper script to launch training:
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 1, 4, or 8).
 
 Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```
-with 8 GPUs, running DALI took 174 s, Minato took around 85 seconds, and PyTorch takes X s. 
+with 8 GPUs, running DALI took 155 s, Minato took around 85 seconds, and PyTorch takes 250 s. 
 
 ### Step 4: Evaluate Results
 

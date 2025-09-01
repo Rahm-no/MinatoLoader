@@ -1,7 +1,6 @@
 # Ignore everything under results (no exceptions now)
-results/**
 imseg_workload/results/**
-
+imseg_workload/raw-data-dir/**
 # Ignore CSV/PDF anywhere
 *.csv
 *.pdf
@@ -15,3 +14,4 @@ imseg_workload/ckpts/*
 
 
 
+imseg_workload/results_allsystems.csv

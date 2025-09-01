@@ -100,8 +100,10 @@ def main():
     else:
         print("Invalid exec_mode.")
         pass
+        
+    if is_distributed:
 
-    torch.distributed.destroy_process_group()
+        torch.distributed.destroy_process_group()
 
 
 if __name__ == "__main__":

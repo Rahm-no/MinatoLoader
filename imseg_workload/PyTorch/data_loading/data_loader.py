@@ -99,7 +99,6 @@ def get_data_loaders(flags, num_shards, global_rank):
                                   num_workers=flags.num_workers,
                                   pin_memory=True,
                                   drop_last=True,     prefetch_factor=4 ) # You can tune this value (default is 2))
-    print("prefetch_factor", 4)
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=1,
                                 shuffle=not flags.benchmark and val_sampler is None,

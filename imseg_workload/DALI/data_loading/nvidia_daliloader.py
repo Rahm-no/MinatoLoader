@@ -214,75 +214,88 @@ import nvidia.dali.fn as fn
 import nvidia.dali.types as types
 
 
-def sharded_pipeline(files1, files2, device_id, shard_id, num_shards, patch_size, oversampling, batch_size, training=True):
-  
-    print("batch_size in pipeline " , batch_size, "shard_id", shard_id, "num_shards", num_shards)
+from nvidia.dali import Pipeline, fn, types
 
+def sharded_pipeline(files1, files2, device_id, shard_id, num_shards,
+                     patch_size, oversampling,batch_size, num_trials=20, training=True):
+    print("batch_size in pipeline", batch_size, "shard_id", shard_id, "num_shards", num_shards)
 
- # Modified pipeline configuration
     pipe = Pipeline(
-        batch_size=1,
-        num_threads=12,  # Increased to match CPU cores
-        device_id=device_id ,       
-        prefetch_queue_depth=8,  # Increased prefetch depth
+        batch_size=batch_size,
+        num_threads=88,
+        device_id=device_id,
+        prefetch_queue_depth=8
     )
 
     with pipe:
-        # Read + load
+        # --- Readers ---
         images = fn.readers.numpy(device="cpu", files=files1, shard_id=shard_id, num_shards=num_shards, name="reader")
         labels = fn.readers.numpy(device="cpu", files=files2, shard_id=shard_id, num_shards=num_shards, name="reader_labels")
         images = images.gpu()
         labels = labels.gpu()
 
-        # Normalize types
-        images = fn.cast(images, dtype=types.FLOAT, device="gpu")
-        labels = fn.cast(labels, dtype=types.UINT8, device="gpu")
+        # --- Normalize dtypes ---
+        images = fn.cast(images, dtype=types.FLOAT)
+        labels = fn.cast(labels, dtype=types.UINT8)
+        images = fn.dl_tensor_python_function(
+             images, function=lambda x: x, batch_processing=False)
+        labels = fn.dl_tensor_python_function(
+             labels, function=lambda x: x, batch_processing=False)
 
-        # Change layout to (H, W, D, C)
-        images = fn.transpose(images, perm=[1, 2, 3, 0], device="gpu")
-        labels = fn.transpose(labels, perm=[1, 2, 3, 0], device="gpu")
+        # --- Layout: (H, W, D, C) ---
+        images = fn.transpose(images, perm=[1, 2, 3, 0])
+        labels = fn.transpose(labels, perm=[1, 2, 3, 0])
 
-        # Spatial crop
-        images = fn.crop(images, crop=patch_size, device="gpu")
-        labels = fn.crop(labels, crop=patch_size, device="gpu")
+        # --- Random crop ---
+        images = fn.crop(images, crop=patch_size)
+        labels = fn.crop(labels, crop=patch_size)
 
-        # Flip: random axes [x, y, z]
-        for i in range(num_trials):
-              # Gaussian noise + blur
+        
+
+        # --- Multiple heavy passes ---
+        for _ in range(num_trials):
+           
+            # Gaussian noise + blur
+            noise = fn.random.normal(images, stddev=0.05)
             images = fn.gaussian_blur(
-                images + fn.random.normal(images, stddev=0.05),
-                window_size=33,
+                images + noise,
+                window_size=51,
                 sigma=fn.random.uniform(range=[0.5, 1.5])
             )
-            flip_axes = fn.random.coin_flip(probability=1, shape=3)
-            images = fn.flip(images, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
-            labels = fn.flip(labels, horizontal=flip_axes[0], vertical=flip_axes[1], depthwise=flip_axes[2])
 
-        # Brightness & Contrast
+            # Random flips (x,y,z)
+            flip_x = fn.random.coin_flip(probability=0.4)
+            flip_y = fn.random.coin_flip(probability=0.4)
+            flip_z = fn.random.coin_flip(probability=0.4)
+            images = fn.flip(images, horizontal=flip_x, vertical=flip_y, depthwise=flip_z)
+            labels = fn.flip(labels, horizontal=flip_x, vertical=flip_y, depthwise=flip_z)
+
+        # --- Brightness & Contrast (images only) ---
         images = fn.brightness_contrast(
             images,
             brightness=fn.random.uniform(range=[0.8, 1.2]),
             contrast=fn.random.uniform(range=[0.8, 1.2]),
             contrast_center=128
         )
-
       
 
-        angle = fn.random.uniform(range=[-10.0, 10.0])  # small 3D rotation
-        matrix = fn.transforms.rotation(angle=angle, axis=[0.0, 0.0, 1.0])  # rotate in XY
-        images = images.gpu()
-        labels = labels.gpu()
-        images = fn.warp_affine(images, matrix=matrix, device="gpu", fill_value=0)
-        labels = fn.warp_affine(labels, matrix=matrix, device="gpu", fill_value=0, interp_type=types.INTERP_NN)
 
-        # Back to (C, D, H, W)
-        images = fn.transpose(images, perm=[3, 0, 1, 2], device="gpu")
-        labels = fn.transpose(labels, perm=[3, 0, 1, 2], device="gpu")
+        # --- Random rotation ---
+        angle = fn.random.uniform(range=[-10.0, 10.0])
+        matrix = fn.transforms.rotation(angle=angle, axis=[0.0, 0.0, 1.0])
+        images = fn.warp_affine(images, matrix=matrix, fill_value=0)
+        labels = fn.warp_affine(labels, matrix=matrix, fill_value=0, interp_type=types.INTERP_NN)
+      
 
+
+        # --- Back to (C, D, H, W) ---
+        images = fn.transpose(images, perm=[3, 0, 1, 2])
+        labels = fn.transpose(labels, perm=[3, 0, 1, 2])
 
         pipe.set_outputs(images, labels)
 
     return pipe
+
 
 def get_data_loaders(flags, num_shards, global_rank):
     patch_size = flags.input_shape
@@ -290,9 +303,7 @@ def get_data_loaders(flags, num_shards, global_rank):
     # Assuming get_data_split is a function that returns training and validation data files
 
     x_train, y_train, x_val, y_val = get_data_split(flags.data_dir, num_shards, shard_id=global_rank)
-    print("len(x_va)", len(x_val))
-    print("len(y_val)", len(y_val))
-
+   
     # Create DALI pipelines for training and validation
     train_pipe = sharded_pipeline(x_train, y_train, device_id= global_rank, shard_id=global_rank, num_shards=num_shards,
                                   patch_size=patch_size, oversampling=oversampling,batch_size=flags.batch_size, training=True)
@@ -326,5 +337,4 @@ def get_data_loaders(flags, num_shards, global_rank):
         auto_reset=True,)
     
 
-    print("train_iter", dali_train_iter)
     return dali_train_iter, dali_val_iter

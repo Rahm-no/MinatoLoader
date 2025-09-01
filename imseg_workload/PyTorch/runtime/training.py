@@ -95,14 +95,14 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
 
 
         for iteration, batch in enumerate(tqdm(train_loader, disable=(rank != 0) or not flags.verbose)):
-            print("image size", calculate_tensor_size(batch[0]))
-            print("label size", calculate_tensor_size(batch[1]))
+            # print("image size", calculate_tensor_size(batch[0]))
+            # print("label size", calculate_tensor_size(batch[1]))
             image, label = batch
             size += calculate_tensor_size(image) + calculate_tensor_size(label)
 
             image, label = image.to(device), label.to(device)
-            print(f"Image dtype: {image.dtype}, shape: {image.shape}")
-            print(f"Label dtype: {label.dtype}, shape: {label.shape}")
+            # print(f"Image dtype: {image.dtype}, shape: {image.shape}")
+            # print(f"Label dtype: {label.dtype}, shape: {label.shape}")
             for callback in callbacks:
                 callback.on_batch_start()
             
@@ -116,7 +116,6 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
                 output = model(image)
                 loss_value = loss_fn(output, label)
                 loss_value /= flags.ga_steps
-                print("loss_value in speedy", loss_value)
 
             if flags.amp:
                 scaler.scale(loss_value).backward()

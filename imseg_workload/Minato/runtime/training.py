@@ -193,7 +193,8 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
     # only rank 0 writes results
     if rank == 0:
         SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-        ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+        ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
+        print('ROOT_DIR', ROOT_DIR)
         result_file = os.path.join(ROOT_DIR, "results_allsystems.csv")
 
         # Ensure file exists with header
