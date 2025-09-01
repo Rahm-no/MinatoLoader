@@ -115,7 +115,6 @@ docker build -t minato:latest .
 
 
     ```bash 
-    cd imseg-workload
     mkdir data
     mkdir results
     ./start_container.sh
