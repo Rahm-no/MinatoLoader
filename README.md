@@ -8,7 +8,7 @@
 
 ## 2. Execution Environment
 
-This experiment were run on the following environment:
+The experiments for this artifact evaluation were run on the following environment:
 - **Operating System**: Ubuntu 20.04.6 LTS (Focal Fossa), Linux kernel 5.15.0-1066-oracle
 - **CPU**:2 × Intel(R) Xeon(R) CPU E5-2698 v4 @ 2.20GHz  (20 cores per socket × 2 sockets × 2 threads = 80 CPUs total)
 - **RAM**: 503 GiB
