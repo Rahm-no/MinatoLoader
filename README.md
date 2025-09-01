@@ -138,8 +138,8 @@ docker build -t minato:latest .
 
 All experiments must be executed **inside the provided Docker container**.  
 You can either:  
-1. **Run all systems at once**.
-2. **Run each system individually** .  
+1. **Run all systems at once** (Option A).
+2. **Run each system individually** (Option B) .  
 
 In both cases, the **final step is evaluating results and plotting figures**.
 
@@ -156,7 +156,9 @@ This script will start the container and mount the repository. Once inside, you 
 ## Option A: Run All Systems at Once
 
 To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
-```./run_all.sh NUM_GPUs```
+``` bash 
+./run_all.sh NUM_GPUs
+```
 * NUM_GPUs = number of GPUs to use (default: 8)
 
 * Example (on a node with 8×V100 GPUs): ``` ./run_all.sh 8 ```
