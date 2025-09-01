@@ -39,7 +39,7 @@ Each system subdirectory follows the same structure:
 - **`main.py`** – Entry point script for running the full pipeline, from data loading and distribution initialization to training.  
 - **`run_and_time.sh`** - Running the workload.
 - **`run_dali.sh`, `run_minato.sh`, and `run_pytorch.sh`** scripts to run the each workload. 
----
+
 
 ## Repository Contents
 
