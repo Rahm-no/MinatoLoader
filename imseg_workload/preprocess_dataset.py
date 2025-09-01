@@ -144,9 +144,8 @@ if __name__ == '__main__':
     if args.mode == "preprocess":
         preprocessor = Preprocessor(args)
         preprocessor.preprocess_dataset()
-        verify_dataset(args.results_dir)
+        # verify_dataset(args.results_dir)
 
     if args.mode == "verify":
         verify_dataset(args.results_dir)
-
 

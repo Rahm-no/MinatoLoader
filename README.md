@@ -50,6 +50,7 @@ In `imseg_workload/` directory, the most relevant files are:
 - **`Dockerfile`** – Container setup with the required dependencies.  
 - **`start_container.sh`** – Script to start the container environment.  
 - **`cpu_gpu_usage.sh`** - Outputs a csv file of the average CPU and GPU usage over time.
+- **`run_all.sh`** - Run all three systems at once, it accepts the number of GPUs as input. 
 
 
 
@@ -86,12 +87,12 @@ This benchmark represents a 3D medical image segmentation task using [2019 Kidne
 ```bash 
 git clone git@github.com:Rahm-no/MinatoLoader.git
 ```
-2. Build docker image [This step will take X min  ]
+2. Build docker image [This step will take 5 min  ]
 ```bash 
 cd imseg_workload
 docker build -t minato:latest .
 ```
-3. Download the data [This step will take X min and 27GB in storage ]
+3. Download the data [This step will take 48 min and 27GB in storage ]
    
     To download the data please follow the instructions:
     ```bash
@@ -114,6 +115,7 @@ docker build -t minato:latest .
 
 
     ```bash 
+    cd imseg-workload
     mkdir data
     mkdir results
     ./start_container.sh
@@ -130,9 +132,19 @@ docker build -t minato:latest .
     The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
 
-## 4. Running each Systems
 
-This section explains how to run the artifact and reproduce a minimal running example.   All experiments must be executed **inside the provided Docker container**. The examples provided are intentionally minimal to respect the evaluators’ time while still demonstrating correctness and reproducibility.
+
+
+## 4. Running the Systems
+
+All experiments must be executed **inside the provided Docker container**.  
+You can either:  
+1. **Run all systems at once**.
+2. **Run each system individually** .  
+
+In both cases, the **final step is evaluating results and plotting figures**.
+
+---
 
 ### Step 1: Start the Container
 First, make sure the Docker image has been built using the provided `Dockerfile`.  
@@ -141,23 +153,45 @@ Then, launch the container with:
 ```bash
 ./start_container.sh
 ```
-This script will start the container and mount the repository. Once inside, you will find yourself in the directory of the artifact: `imseg-workload` 
-### Step 2: Choose the System to Run
-Navigate into the system directory you want to evaluate. 
-For example: ```cd DALI ```
+This script will start the container and mount the repository. Once inside, you will find yourself in the directory of the artifact: `imseg-workload`.
+## Option A: Run All Systems at Once
+
+To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
+```./run_all.sh NUM_GPUs```
+* NUM_GPUs = number of GPUs to use (default: 8)
+
+* Example (on a node with 8×V100 GPUs): ``` ./run_all.sh 8 ```
+
+## Option B: Run each system
+### Step 2: Choose the System to Run 
+Navigate into the system directory you want to evaluate. For example: ```cd DALI ```
+
 ### Step 3: Run the Training Script
 Each system provides a wrapper script to launch training:
 
 ```bash run_SYSTEM.sh NUM_GPUs```
 
-Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 1, 4, or 8).
+Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
+Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
+With 8 GPUs, running DALI took 155 s, Minato took around 85 seconds, and PyTorch takes 250 s. 
 
-Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```
-with 8 GPUs, running DALI took 155 s, Minato took around 85 seconds, and PyTorch takes 250 s. 
+## Evaluate Results
 
-### Step 4: Evaluate Results
+When you launch a run, the system will automatically:  
+- **Train a 3D U-Net model** on the preprocessed dataset,  
+- **Log training metrics**, including throughput, CPU/GPU utilization, and total runtime,  
+- **Save model checkpoints** under the `ckpts/` directory,  
+- **Write results to CSV files**, which include the measured training time. These CSV files can later be used for plotting figures and further analysis.  
 
-When you launch a run, the system will: Train a 3D U-Net model on the preprocessed dataset, Log training throughput, CPU/GPU utilization, and total runtime. Save model checkpoints under the ckpts/ directory.
+For comparability and faster turnaround, we report **time-to-train with 8 GPUs** across all systems.  
+However, you can also run with fewer GPUs (e.g., `bash run_pytorch.sh 2`), though the training will naturally take longer.  
 
-For faster training time, we report time-to-train with 8 GPUs across all systems. However, you can also run with fewer GPUs (e.g., bash run_pytorch.sh 2) but it will take more time. 
+After running the experiments, you can produce visual summaries of the results:  
 
+- **Training time comparison**  
+   To generate a histogram comparing the training time of the three systems (PyTorch, DALI, and MinatoLoader):  
+   ```python3 plot_figure.py```
+- **Resource utilization yimeline**
+To visualize CPU and GPU utilization over time:
+``` python3 plot_usage.py```
+These plots provide a clear picture of both performance (time-to-train) and efficiency (hardware usage) across systems.
