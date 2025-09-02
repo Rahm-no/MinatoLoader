@@ -27,7 +27,7 @@ Each GPU maintains its own batch queue, which assembles training batches from bo
 - **Python**: 3.8.10  
 - **Docker**: 28.1.1  
 
-## 3. Description of Artifact Components and Relation to the Paper
+## 3. Description of the artifact componenets
 
 This artifact is organized under the `imseg_workload/` directory, which contains one main workload (3D U-Net for image segmentation) and three system implementations. These correspond to the data loading frameworks compared in the paper:  
 1. **PyTorch DataLoader** (`imseg_workload/PyTorch`)  
