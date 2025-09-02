@@ -1,17 +1,18 @@
 # Ignore everything under results (no exceptions now)
-imseg_workload/results/**
-imseg_workload/raw-data-dir/**
+results/**
+raw-data-dir/**
 # Ignore CSV/PDF anywhere
 *.csv
 *.pdf
-
+figures/**
+data/
 # Logs
 *.log
 *.log.*
-imseg_workload/DALI_prev/
+DALI_prev/
 # Ignore checkpoints
-imseg_workload/ckpts/*
+ckpts/*
 
 Minato/data_loading_old/** 
+ckpts/*
 
-imseg_workload/results_allsystems.csv
