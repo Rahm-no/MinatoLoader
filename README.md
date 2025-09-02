@@ -10,7 +10,7 @@ MinatoLoader operates in three main stages: data loading, preprocessing, and bat
 
 Each GPU maintains its own batch queue, which assembles training batches from both fast and slow samples, preventing head-of-line blocking. To sustain throughput, a worker scheduler continuously monitors queue occupancy and CPU utilization, dynamically adjusting the number of CPU workers. This design ensures that data preparation overlaps with training, keeping GPUs busy and maximizing training efficiency.
 
-## 2. Execution Environment
+##  Execution Environment
 
 ### 🖥️ Hardware Specifications
 - **Operating System**: Ubuntu 20.04.6 LTS (Focal Fossa), Linux kernel 5.15.0-1066-oracle  
@@ -29,7 +29,7 @@ Each GPU maintains its own batch queue, which assembles training batches from bo
 
 💡 **Note:** The artifact experiments were executed on the setup described above. In the paper, we additionally report results on **NVIDIA A100 GPUs** to broaden the evaluation.  
 
-## 3. Description of the Artifact Components
+## 📦 Artifact Components
 
 This artifact is organized around one main workload (**3D-UNet for image segmentation**) and three system implementations. These correspond to the data loading frameworks compared in the paper:  
 1. **PyTorch DataLoader** (`PyTorch/`)  
@@ -70,14 +70,14 @@ At the repository root, the most relevant files are:
 - **`asynchronous_dataloader.py`** – MinatoLoader’s implementation.  
 
 
-## 4. Benchmark & Dataset 
+## 🧪 Benchmark & Dataset
 
 This benchmark represents a 3D medical image segmentation task using the [2019 Kidney Tumor Segmentation Challenge (KiTS19)](https://kits19.grand-challenge.org/) dataset. The task is carried out with a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant inspired by the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper. The KiTS19 dataset is hosted in the [official GitHub repository](https://github.com/neheller/kits19), and the baseline code originates from the [MLCommons Training Image Segmentation Workload](https://github.com/mlcommons/training/tree/master/image_segmentation/pytorch).
 
 💡 **Note:** While KiTS19 serves as the primary benchmark in this artifact, we also evaluated our system on other datasets, including **COCO** ([https://cocodataset.org/#home]) for object detection and **LibriSpeech** ([https://www.openslr.org/12]) for speech recognition, to validate its generality across different workloads.
 
 
-## 📊 Steps to download and preprocess the data
+## Steps to download and preprocess the data
 
 1. Clone the MinatoLoader Eurosys  repo
 ```bash 
@@ -123,7 +123,7 @@ No manual setup is required beyond building the container.
    
     The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
-## 4. Running the Systems
+## 🚀 Running the Systems
 
 All experiments must be executed **inside the provided Docker container**.  
 The general workflow is:
@@ -171,43 +171,44 @@ Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
 Example: to run MinatoLoader on 8 GPUs: ``` run_minato.sh 8```.
 
+## 📊 Evaluate Results
 
-## 5. Evaluate Results
-
-Each run will automatically:
-
+### 1. Automatic Outputs
+After each run, the system will automatically:
 - Train a **3D-UNet** model on the preprocessed dataset  
 - Log training metrics (throughput, CPU/GPU utilization, total runtime) to CSV files  
 - Save checkpoints under `ckpts/`  
 - Append training time results into `results/results_allsystems.csv`  
 
----
+### 2. Reference training time
+For comparability, we report training time results on **8 GPUs for 10 epochs**:
 
-### Reported Time-to-Train (8 GPUs, 10 epochs)
+- ⚡ **PyTorch**: ~210 s  
+- 🚀 **DALI**: ~151 s  
+- 🌀 **MinatoLoader**: ~81 s  
 
-- **PyTorch**: ~81 s  
-- **DALI**: ~151 s  
-- **MinatoLoader**: ~210 s  
+*(These values are provided as a baseline to help reviewers check reproducibility.)*
 
-These measurements are provided for comparability and faster turnaround.
+### 3. Visualization
+You can generate figures to summarize both performance and efficiency.
 
----
-
-### Generating Figures
-
-After completing the experiments, you can create visual summaries.
-
-#### Training Time Comparison
+#### 📉 Training Time Comparison
 Generate a histogram comparing runtimes across PyTorch, DALI, and Minato:
 
 ```bash
 python3 scripts/plot_figure.py
 ```
-#### Resource Utilization Timeline
+
+📈 Resource Utilization Timeline
 
 Visualize CPU/GPU utilization over time:
+
 ```bash
 python3 scripts/plot_usage.py
 ```
 
-The generated figures provide a clear view of the training time across systems and hardware utilization (CPU/GPU usage over time).
+These figures provide:
+
+- Performance → overall training time across systems.
+
+- Efficiency → CPU/GPU utilization during training.
