@@ -177,7 +177,7 @@ run_SYSTEM.sh NUM_GPUs
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
 Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
-With 8 GPUs, running DALI took x s, Minato took around x seconds, and PyTorch takes x s. 
+With 8 GPUs, running DALI took x seconds, Minato took around x seconds, and PyTorch takes x seconds. 
 
 ## 5. Evaluate Results
 
