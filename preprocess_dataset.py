@@ -8,7 +8,7 @@ import nibabel
 import numpy as np
 import torch
 from torch.nn.functional import interpolate
-
+import time
 
 EXCLUDED_CASES = []#[23, 68, 125, 133, 15, 37]
 MAX_ID = 210
@@ -134,6 +134,7 @@ def verify_dataset(results_dir):
 
 
 if __name__ == '__main__':
+    start_time = time.time()
 
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('--data_dir', dest='data_dir', required=True)
@@ -148,4 +149,8 @@ if __name__ == '__main__':
 
     if args.mode == "verify":
         verify_dataset(args.results_dir)
+    
+
+    end_preprocessing_time = time.time() - start_time
+    print(f"✅ Preprocessing completed in {end_preprocessing_time:.2f} seconds.")
 

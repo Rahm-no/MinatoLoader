@@ -35,7 +35,7 @@ def evaluate(flags, model, loader, loss_fn, score_fn, device, epoch=0, is_distri
             image, label = image.to(device), label.to(device)
             if image.numel() == 0:
                 continue
-            with autocast(enabled=flags.amp):
+            with torch.amp.autocast("cuda", enabled=flags.amp):
                 output, label = sliding_window_inference(
                     inputs=image,
                     labels=label,

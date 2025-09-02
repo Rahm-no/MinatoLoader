@@ -105,15 +105,16 @@ No manual setup is required beyond building the container.
     ```
     This will download the original, non-interpolated data to `raw-data-dir/kits19/data`
 
-3. Start an interactive session in the container to run preprocessing/training.
+3. Start an interactive session in the container to run preprocessing of the dataset and model training. 
 
     ```bash 
+    cd ../.. # return to root directory 
     mkdir data
     mkdir results
     ./start_container.sh
     ```
  
-2. Preprocess the dataset [This step will take 15 min and 29GB of storage].
+2. Preprocess the dataset [This step will take ~13 min and 29GB of storage].
    
     
     The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
@@ -153,12 +154,16 @@ You have two options:
 Run PyTorch, DALI, and MinatoLoader sequentially with one command:
 
 ``` bash 
-./run_all.sh NUM_GPUs
+./scripts/run_all.sh NUM_GPUs
 ```
 * NUM_GPUs = number of GPUs to use (default: 8)
 
-* Example (on a node with 8×V100 GPUs): ``` ./run_all.sh 8 ```
+* Example (on a node with 8×V100 GPUs): ``` ./scripts/run_all.sh 8 ```
 
+👀 **Expected output:**  The program should print the following message at the bottom of the output, indicating successful execution of all stages.
+``` bash
+✅ All systems finished. Combined results are in /workspace/unet3d/results_allsystems.csv
+```
 #### 🔹 Option B: Run Each System Individually
 
 Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and launch training with:
@@ -169,8 +174,13 @@ Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and 
 ```
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
-Example: to run MinatoLoader on 8 GPUs: ``` run_minato.sh 8```.
+Example: to run MinatoLoader on 8 GPUs: ``` ./run_minato.sh 8```.
 
+
+👀 **Expected output:**  The program should print the following message at the bottom of the output, indicating successful execution of all stages. X is the system name, it can be either (Minato, Pytorch or DALI).
+``` bash
+✅ Training for system 'X' completed successfully!
+```
 ### Step 3: Evaluate Results
 
 #### 1. Automatic Outputs
@@ -208,3 +218,8 @@ python3 scripts/plot_usage.py
  ✅  Figures will be generated under `figures/`.  These figures demonstrate both:  
 - **Performance** → overall training time across the evaluated systems.  
 - **Efficiency** → CPU/GPU utilization during training.
+
+
+
+
+

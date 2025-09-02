@@ -184,9 +184,7 @@ def train(flags, model, train_loader, val_loader, loss_fn, score_fn, device, cal
 
             eval_metrics = evaluate(flags, model, val_loader, loss_fn, score_fn, device, epoch)
             eval_metrics["train_loss"] = sum(cumulative_loss) / len(cumulative_loss)
-            with open(accuracy_file, 'a', newline='') as f:
-                f.write(f"{epoch},{eval_metrics['mean_dice']},{eval_metrics['L1 dice']},{eval_metrics['L2 dice']}\n")
-            
+        
             mllog_event(key=CONSTANTS.EVAL_ACCURACY, 
                         value=eval_metrics["mean_dice"], 
                         metadata={CONSTANTS.EPOCH_NUM: epoch}, 

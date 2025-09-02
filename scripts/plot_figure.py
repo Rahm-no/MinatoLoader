@@ -44,8 +44,8 @@ latest_df = df.sort_values("timestamp").groupby("system").tail(1)
 # Plot histogram
 plt.figure(figsize=(8,6))
 plt.bar(latest_df["system"], latest_df["seconds"], color=["orange","blue","green"])
-plt.ylabel("Seconds")
-plt.title("Latest Results per System")
+plt.ylabel("Training time (seconds)")
+plt.title("Comparison of training time between systems")
 plt.grid(axis="y", linestyle="--", alpha=0.7)
 
 # Save inside figures/ folder
