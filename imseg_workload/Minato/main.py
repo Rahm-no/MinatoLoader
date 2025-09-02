@@ -166,7 +166,7 @@ def cleanup_processes():
     children = parent.children(recursive=True)
     for child in children:
         try:
-            print(f"Joining {child.pid} ({child.name()})")
+            # print(f"Joining {child.pid} ({child.name()})")
             child.terminate()  # sends SIGTERM
         except psutil.NoSuchProcess:
             pass
@@ -174,7 +174,7 @@ def cleanup_processes():
     gone, alive = psutil.wait_procs(children, timeout=5)
     for child in alive:
         try:
-            print(f"Joining {child.pid}")
+            # print(f"Joining {child.pid}")
             child.kill()  # sends SIGKILL
         except psutil.NoSuchProcess:
             pass
@@ -189,5 +189,5 @@ if __name__ == "__main__":
     slow_processed_queue = mp.Queue()
 
     main()
-    print('FINISH')
+    # print('FINISH')
     cleanup_processes()

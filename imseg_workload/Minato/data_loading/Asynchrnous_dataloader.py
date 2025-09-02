@@ -33,7 +33,7 @@ class DataProducer(mp.Process):
 
         self.rank = get_rank()  # Get the GPU rank for this producer
     def run(self):
-        print(f"[GPU Rank {self.rank} | Producer {self.pid}] Starting.")
+        # print(f"[GPU Rank {self.rank} | Producer {self.pid}] Starting.")
         while not data_stop_event.is_set():
             # Wait until the producer should resume
             if self.queue.qsize() < self.queue_size - 1:  # There's space in the queue
@@ -48,10 +48,10 @@ class DataProducer(mp.Process):
                 if data_stop_event.is_set():
                     break
 
-                print(f"[GPU Rank {self.rank} | Producer {self.pid}] Processing index {idx}")
+                # print(f"[GPU Rank {self.rank} | Producer {self.pid}] Processing index {idx}")
                 sample = self.dataset[idx]
                 if sample is None:
-                    print(f"skip sample {idx}")
+                    # print(f"skip sample {idx}")
                     continue
                 else:
                     self.queue.put(sample)
@@ -67,7 +67,7 @@ class DataProducer(mp.Process):
             # if batch and not data_stop_event.is_set():
             #     self.put_batch(batch)
 
-            print(f"[GPU Rank {self.rank} | Producer {self.pid}] Finished epoch with {num_processed} samples.")
+            # print(f"[GPU Rank {self.rank} | Producer {self.pid}] Finished epoch with {num_processed} samples.")
             data_resume_event.clear()  # Pause the producer until more space is available in the queue
 
 
@@ -83,10 +83,10 @@ class DataProducer(mp.Process):
             batch_labels_tensor = torch.stack(labels)
 
             # Attempt to add the batch to the queue without sleep
-            if self.queue.qsize() < 40:  # Ensure it doesn't exceed 11
+            if self.queue.qsize() < 5:  # Ensure it doesn't exceed 11
                 try:
                     # Try to put data in the queue
-                    self.queue.put((batch_images_tensor, batch_labels_tensor), timeout=1)
+                    self.queue.put((batch_images_tensor, batch_labels_tensor), timeout=0.05)
                 except Full:
                     print(f"Queue is full. Current size: {self.queue.qsize()}. Not adding data.")
             else:
@@ -118,10 +118,10 @@ class AsynchronousLoader(DataLoader):
         self.shuffle = shuffle
 
         self.indices = list(self.sampler) # it gives the indices per gpu
-        print(f"GPU Rank {self.rank} is assigned {len(self.indices)} samples.")
+        # print(f"GPU Rank {self.rank} is assigned {len(self.indices)} samples.")
         self.queue = mp.Queue(maxsize=self.queue_size)
         
-        print(f"Created queue for GPU Rank {self.rank}.")
+        # print(f"Created queue for GPU Rank {self.rank}.")
 
         self.start_threads()
 
@@ -139,7 +139,7 @@ class AsynchronousLoader(DataLoader):
             if not producer_indices:  # Break if no indices are available
                 break
 
-            print(f"[GPU Rank {self.rank}] Producer {i} assigned indices: {producer_indices}")
+            # print(f"[GPU Rank {self.rank}] Producer {i} assigned indices: {producer_indices}")
             
             producer = DataProducer(self.queue, self.dataset, self.batch_size, self.shuffle,
                                     self.pin_memory, self.device, self.queue_size,
@@ -159,7 +159,7 @@ class AsynchronousLoader(DataLoader):
         for producer in self.producers:
             if producer.is_alive():
                 print(f"Joining producer")
-                producer.join(timeout=5)  # Add a timeout to avoid hanging forever
+                producer.join(timeout=1)  # Add a timeout to avoid hanging forever
                 if producer.is_alive():
                     print(f"Producer did not exit, forcefully terminating...")
                     producer._stop()  # Force stop if the producer doesn't exit cleanly (not recommended, but an option)
@@ -168,7 +168,7 @@ class AsynchronousLoader(DataLoader):
         # Clean up the multiprocessing queue if using multiprocessing.Queue
         self.queue.close()
         self.queue.join_thread()
-        print("Queue closed and joined.")
+        # print("Queue closed and joined.")
 
     def __iter__(self):
 
@@ -179,40 +179,10 @@ class AsynchronousLoader(DataLoader):
         # print("Starting new epoch for rank:", self.rank, "queue size", self.queue.qsize)
 
         return self
-    # def __next__(self):
-    #     print("Batch processed:", self.batches_processed, "for rank:", self.rank, "epoch batches:", self.epoch_batches)
-        
-    #     if self.batches_processed >= self.epoch_batches -1 :
-    #         print('RAISE StopIteration')
 
-    
-    #         raise StopIteration  # End of epoch
-
-
-    #     while True:
-    #         try:
-    #             if 
-    #             # Print the queue size specific to this GPU rank
-    #             print(f"Queue size for GPU {self.rank}: {self.queue.qsize()} samples")
-
-    #             # Get a batch from the queue
-    #             batch = self.queue.get(timeout=1)
-    #             self.batches_processed += 1
-
-    #             # Print the processed batch info
-    #             print(f"[GPU Rank {self.rank}] Processed batch {self.batches_processed}.")
-                
-    #             return batch
-
-    #         except Empty:
-    #             # If the queue is empty and the stop event is set, break the loop
-    #             if data_stop_event.is_set():
-    #                 print("Stopping iteration due to stop event.")
-    #                 break
-    # from queue import Empty
 
     def __next__(self):
-        print("Batch processed:", self.batches_processed, "for rank:", self.rank, "epoch batches:", self.epoch_batches)
+        # print("Batch processed:", self.batches_processed, "for rank:", self.rank, "epoch batches:", self.epoch_batches)
 
         if self.batches_processed >= self.epoch_batches:
             print('RAISE StopIteration')
@@ -225,27 +195,27 @@ class AsynchronousLoader(DataLoader):
 
             # 1. Always try fast queue
             try:
-                sample = self.queue.get(timeout=1)
+                sample = self.queue.get(timeout=0.05)
                 if sample is not None:
                     batch.append(sample)
-                    print(f"[GPU Rank {self.rank}] Fetched fast sample, current batch size: {len(batch)}")
+                    # print(f"[GPU Rank {self.rank}] Fetched fast sample, current batch size: {len(batch)}")
             except Empty:
                 print(f"[GPU Rank {self.rank}] Fast queue empty.")
 
             # 2. Independently check if slow queue has > 5 items and fetch from it too
             if self.slow_processed_queue.qsize() > 5 and len(batch) < self.batch_size:
                 try:
-                    slow_sample = self.slow_processed_queue.get(timeout=1)
+                    slow_sample = self.slow_processed_queue.get(timeout=0.05)
                     if slow_sample is not None:
                         batch.append(slow_sample)
-                        print(f"[GPU Rank {self.rank}] Fetched slow sample (qsize > 5), current batch size: {len(batch)}")
+                        # print(f"[GPU Rank {self.rank}] Fetched slow sample (qsize > 5), current batch size: {len(batch)}")
                 except Empty:
                     print(f"[GPU Rank {self.rank}] Expected slow sample, but slow queue was empty.")
 
             # 3. Handle idle case
             if sample is None and self.slow_processed_queue.qsize() <= 5:
                 if data_stop_event.is_set():
-                    print("Stopping iteration due to stop event and empty queues.")
+                    # print("Stopping iteration due to stop event and empty queues.")
                     if not batch:
                         raise StopIteration
                     else:
@@ -266,8 +236,8 @@ class AsynchronousLoader(DataLoader):
 
         if batch_images_tensor.size(0) == self.batch_size:
             self.batches_processed += 1
-            print(f"[GPU Rank {self.rank}] Completed batch {self.batches_processed}. Batch size: {batch_images_tensor.size(0)}")
+            # print(f"[GPU Rank {self.rank}] Completed batch {self.batches_processed}. Batch size: {batch_images_tensor.size(0)}")
             return batch_images_tensor, batch_labels_tensor
         else:
-            print(f"[GPU Rank {self.rank}] Incomplete batch (size {batch_images_tensor.size(0)}), skipping.")
+            # print(f"[GPU Rank {self.rank}] Incomplete batch (size {batch_images_tensor.size(0)}), skipping.")
             return self.__next__()  # Retry until a full batch

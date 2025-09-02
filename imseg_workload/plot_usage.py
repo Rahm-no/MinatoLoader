@@ -38,6 +38,8 @@ for system, csv_file in files.items():
     out_file = os.path.join(results_dir, f"cpu_gpu_usage_{system.lower()}.png")
     plt.savefig(out_file, dpi=300)
     plt.close()
+    print("Average CPU Usage:", np.mean(df["avg_cpu"]))
+    print("Average GPU Usage:", np.mean(df["gpu_avg"]))
 
     print(f"Saved plot for {system} → {out_file}")
 

@@ -12,6 +12,6 @@ imseg_workload/DALI_prev/
 # Ignore checkpoints
 imseg_workload/ckpts/*
 
-
+Minato/data_loading_old/** 
 
 imseg_workload/results_allsystems.csv
