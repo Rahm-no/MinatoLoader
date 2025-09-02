@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-
+import numpy as np
 # Create results folder if not existing
 results_dir = "results"
 os.makedirs(results_dir, exist_ok=True)
@@ -40,3 +40,4 @@ for system, csv_file in files.items():
     plt.close()
 
     print(f"Saved plot for {system} → {out_file}")
+

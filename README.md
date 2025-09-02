@@ -16,7 +16,7 @@ The experiments for this artifact evaluation were run on the following environme
 - **Storage**: 
   - 446 GB SSD (mounted at `/`)
   - 7 TB disk (mounted at `/raid`)
-  
+
 **Software Stack**:
 - NVIDIA Driver:  560.35.05   
 - CUDA: 12.6  
@@ -177,7 +177,7 @@ run_SYSTEM.sh NUM_GPUs
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
 Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
-With 8 GPUs, running DALI took 155 s, Minato took around 85 seconds, and PyTorch takes 250 s. 
+With 8 GPUs, running DALI took x s, Minato took around x seconds, and PyTorch takes x s. 
 
 ## 5. Evaluate Results
 

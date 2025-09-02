@@ -14,7 +14,7 @@ def get_train_transforms():
     rand_noise = GaussianNoise(mean=0.0, std=0.1, prob=1)
     heavy_blur = HeavyGaussianBlur(sigma_range=(1, 5))
     elastic_deform = ElasticDeformation(alpha=1, sigma=5)
-    rand_noise = transforms.Compose([rand_noise])
+    rand_noise = transforms.Compose([rand_noise,elastic_deform])
     train_transforms = transforms.Compose([
         rand_flip, cast, rand_scale, rand_noise, 
     ])
