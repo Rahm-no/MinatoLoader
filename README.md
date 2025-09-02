@@ -16,6 +16,7 @@ The experiments for this artifact evaluation were run on the following environme
 - **Storage**: 
   - 446 GB SSD (mounted at `/`)
   - 7 TB disk (mounted at `/raid`)
+  
 **Software Stack**:
 - NVIDIA Driver:  560.35.05   
 - CUDA: 12.6  
