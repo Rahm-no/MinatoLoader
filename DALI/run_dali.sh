@@ -44,3 +44,4 @@ start_time=$(date +%s)
 end_time=$(date +%s)
 duration=$((end_time - start_time))
 
+echo "✅ Training for system '${SYSTEM_NAME}' completed successfully!"

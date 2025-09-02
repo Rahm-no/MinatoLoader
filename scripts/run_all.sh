@@ -24,4 +24,4 @@ for sys in "${SYSTEMS[@]}"; do
     cd "$ROOT"
 done
 
-echo "All systems finished. Combined results are in $ROOT/results_allsystems.csv"
+echo "✅ All systems finished. Combined results are in $ROOT/results_allsystems.csv"

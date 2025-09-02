@@ -1,5 +1,5 @@
 #### EuroSys’26 Artifact Evaluation for Paper#1084 MinatoLoader
-# 📖 1. Introduction to MinatoLoader
+## 📖 Introduction to MinatoLoader
 
 **Overview:**
 MinatoLoader is a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization by eliminating stalls caused by slow preprocessing samples. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are handled in parallel and fetched later by the main process. The system is evaluated on servers equipped with NVIDIA V100 and A100 GPUs, demonstrating significant improvements over PyTorch DataLoader, NVIDIA DALI, and Pecan.
@@ -77,7 +77,7 @@ This benchmark represents a 3D medical image segmentation task using the [2019 K
 💡 **Note:** While KiTS19 serves as the primary benchmark in this artifact, we also evaluated our system on other datasets, including **COCO** ([https://cocodataset.org/#home]) for object detection and **LibriSpeech** ([https://www.openslr.org/12]) for speech recognition, to validate its generality across different workloads.
 
 
-## Steps to download and preprocess the data
+### Steps to download and preprocess the data
 
 1. Clone the MinatoLoader Eurosys  repo
 ```bash 
@@ -128,14 +128,14 @@ No manual setup is required beyond building the container.
 All experiments must be executed **inside the provided Docker container**.  
 The general workflow is:
 
-1. **Start the container**  
+1. **Start the container**  (if not already started)
 2. **Run experiments** (all systems at once, or each individually)  
 3. **Evaluate results and generate figures**  
 
 ---
 
-### Step 1: Start the Container
-First, ensure the Docker image has been built (see Section 2).  
+### Step 1: Start the Container (if not already started)
+First, ensure the Docker image has been built (see above).  
 Then launch the container with:
 
 ```bash
@@ -171,44 +171,40 @@ Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
 Example: to run MinatoLoader on 8 GPUs: ``` run_minato.sh 8```.
 
-## 📊 Evaluate Results
+### Step 3: Evaluate Results
 
-### 1. Automatic Outputs
+#### 1. Automatic Outputs
 After each run, the system will automatically:
 - Train a **3D-UNet** model on the preprocessed dataset  
 - Log training metrics (throughput, CPU/GPU utilization, total runtime) to CSV files  
 - Save checkpoints under `ckpts/`  
 - Append training time results into `results/results_allsystems.csv`  
 
-### 2. Reference training time
+#### 2. Reference training time
 For comparability, we report training time results on **8 GPUs for 10 epochs**:
 
 - ⚡ **PyTorch**: ~210 s  
 - 🚀 **DALI**: ~151 s  
 - 🌀 **MinatoLoader**: ~81 s  
 
-*(These values are provided as a baseline to help reviewers check reproducibility.)*
-
-### 3. Visualization
+#### 3. Visualization
 You can generate figures to summarize both performance and efficiency.
 
-#### 📉 Training Time Comparison
+* 📉 Training Time Comparison
+
 Generate a histogram comparing runtimes across PyTorch, DALI, and Minato:
 
 ```bash
 python3 scripts/plot_figure.py
 ```
 
-📈 Resource Utilization Timeline
+* 📈 Resource Utilization Timeline
 
 Visualize CPU/GPU utilization over time:
 
 ```bash
 python3 scripts/plot_usage.py
 ```
-
-These figures provide:
-
-- Performance → overall training time across systems.
-
-- Efficiency → CPU/GPU utilization during training.
+ ✅  Figures will be generated under `figures/`.  These figures demonstrate both:  
+- **Performance** → overall training time across the evaluated systems.  
+- **Efficiency** → CPU/GPU utilization during training.
