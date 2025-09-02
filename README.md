@@ -1,43 +1,31 @@
 #### EuroSys’26 Artifact Evaluation for Paper#1084 MinatoLoader
 # 📖 Introduction to MinatoLoader
 
-**Overview:**  
+**Overview:**
+MinatoLoader is a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization by eliminating stalls caused by slow preprocessing samples. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are handled in parallel and fetched later by the main process. The system is evaluated on servers equipped with NVIDIA V100 and A100 GPUs, demonstrating significant improvements over PyTorch DataLoader, NVIDIA DALI, and Pecan.
 
-MinatoLoader, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel.  We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
+**Workflow:**
+MinatoLoader operates in three main stages: data loading, preprocessing, and batch construction. Samples are fetched from storage and preprocessed in parallel by CPU workers. A lightweight load balancer applies a per-sample timeout to classify inputs as fast or slow. Fast samples are placed in the fast queue, while those exceeding the timeout are diverted to a temp queue to finish preprocessing in the background; once ready, they move into the slow queue. 
+<p align="center"> <img src="speedyloader-diagram.svg" alt="MinatoLoader Workflow" width="600"/> </p>
 
-
-
-MinatoLoader, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel. We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
-
-<p align="center">
-  <img src="speedyloader-diagram.svg" alt="Workflow" width="600"/>
-</p>
-
-<!-- 
-
-
-- On a machine with four A100 GPUs, MinatoLoader improves training time of a wide range of workloads by up to **7.5× (3.6× on average)** over PyTorch DataLoader and Pecan, and up to **3× (2.2× on average)** over NVIDIA DALI.  
-- It also increases **average GPU utilization from 46.4% (PyTorch) to 90.45%**, while preserving model accuracy and enabling faster convergence.   -->
+Each GPU maintains its own batch queue, which assembles training batches from both fast and slow samples, preventing head-of-line blocking. To sustain throughput, a worker scheduler continuously monitors queue occupancy and CPU utilization, dynamically adjusting the number of CPU workers. This design ensures that data preparation overlaps with training, keeping GPUs busy and maximizing training efficiency.
 
 ## 2. Execution Environment
 
-The experiments for this artifact evaluation were run on the following environment:
-- **Operating System**: Ubuntu 20.04.6 LTS (Focal Fossa), Linux kernel 5.15.0-1066-oracle
-- **CPU**:2 × Intel(R) Xeon(R) CPU E5-2698 v4 @ 2.20GHz  (20 cores per socket × 2 sockets × 2 threads = 80 CPUs total)
-- **RAM**: 503 GiB
-- **GPU**: 8 × NVIDIA Tesla V100-SXM2-32GB
-- **Storage**: 
-  - 446 GB SSD (mounted at `/`)
-  - 7 TB disk (mounted at `/raid`)
+### 🖥️ Hardware Specifications
+- **Operating System**: Ubuntu 20.04.6 LTS (Focal Fossa), Linux kernel 5.15.0-1066-oracle  
+- **CPU**: 2 × Intel(R) Xeon(R) CPU E5-2698 v4 @ 2.20GHz (20 cores per socket × 2 sockets × 2 threads = 80 CPUs total)  
+- **RAM**: 503 GiB  
+- **GPU**: 8 × NVIDIA Tesla V100-SXM2-32GB  
+- **Storage**:  446 GB SSD (mounted at `/`)  
 
-**Software Stack**:
-- NVIDIA Driver:  560.35.05   
-- CUDA: 12.6  
-- cuDNN: 8.9.7
-- PyTorch: 2.4.1
-- Python: 3.8.10
-- Docker: 28.1.1
-
+### ⚙️ Software Stack
+- **NVIDIA Driver**: 560.35.05  
+- **CUDA**: 12.6  
+- **cuDNN**: 8.9.7  
+- **PyTorch**: 2.4.1  
+- **Python**: 3.8.10  
+- **Docker**: 28.1.1  
 
 ## 3. Description of Artifact Components and Relation to the Paper
 
