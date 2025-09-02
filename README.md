@@ -7,6 +7,11 @@ MinatoLoader, a general-purpose data loader for PyTorch that accelerates trainin
 
 
 
+MinatoLoader, a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are processed in parallel. We evaluate MinatoLoader on servers with **NVIDIA V100** and **A100 GPUs**.  
+
+<p align="center">
+  <img src="speedyloader-drawio.png" alt="Workflow" width="600"/>
+</p>
 
 <!-- 
 
