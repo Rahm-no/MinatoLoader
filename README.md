@@ -1,5 +1,5 @@
 #### EuroSys’26 Artifact Evaluation for Paper#1084 MinatoLoader
-# 📖 Introduction to MinatoLoader
+# 📖 1. Introduction to MinatoLoader
 
 **Overview:**
 MinatoLoader is a general-purpose data loader for PyTorch that accelerates training and improves GPU utilization by eliminating stalls caused by slow preprocessing samples. It continuously prepares data in the background and actively constructs batches by prioritizing fast-to-preprocess samples, while slower samples are handled in parallel and fetched later by the main process. The system is evaluated on servers equipped with NVIDIA V100 and A100 GPUs, demonstrating significant improvements over PyTorch DataLoader, NVIDIA DALI, and Pecan.
@@ -27,73 +27,71 @@ Each GPU maintains its own batch queue, which assembles training batches from bo
 - **Python**: 3.8.10  
 - **Docker**: 28.1.1  
 
-## 3. Description of the artifact componenets
+💡 **Note:** The artifact experiments were executed on the setup described above. In the paper, we additionally report results on **NVIDIA A100 GPUs** to broaden the evaluation.  
 
-This artifact is organized under the `imseg_workload/` directory, which contains one main workload (3D U-Net for image segmentation) and three system implementations. These correspond to the data loading frameworks compared in the paper:  
-1. **PyTorch DataLoader** (`imseg_workload/PyTorch`)  
-2. **NVIDIA DALI** (`imseg_workload/DALI`)  
-3. **MinatoLoader (our system)** (`imseg_workload/Minato`)  
+## 3. Description of the Artifact Components
 
-Each system subdirectory follows the same structure:  
-- **`data_loading/`** – Implements the data loading phase.  
-- **`model/`** – Contains the U-Net3D model components.  
-- **`runtime/`** – Implements the training and inference routines.  
-- **`main.py`** – Entry point script for running the full pipeline, from data loading and distribution initialization to training.  
-- **`run_and_time.sh`** - Running the workload.
-- **`run_dali.sh`, `run_minato.sh`, and `run_pytorch.sh`** scripts to run the each workload. 
+This artifact is organized around one main workload (**3D-UNet for image segmentation**) and three system implementations. These correspond to the data loading frameworks compared in the paper:  
+1. **PyTorch DataLoader** (`PyTorch/`)  
+2. **NVIDIA DALI** (`DALI/`)  
+3. **MinatoLoader (our system)** (`Minato/`)  
 
-
-## Repository Contents
-
-In `imseg_workload/` directory, the most relevant files are:  
-- **`checksum.json`** – List of dataset cases and checksums for completeness verification.  
-- **`preprocess_data.py`** – Converts the dataset to NumPy format for training.  
-- **`requirements.txt`** – Python dependencies for running 3D U-Net.  
-- **`Dockerfile`** – Container setup with the required dependencies.  
-- **`start_container.sh`** – Script to start the container environment.  
-- **`cpu_gpu_usage.sh`** - Outputs a csv file of the average CPU and GPU usage over time.
-- **`run_all.sh`** - Run all three systems at once, it accepts the number of GPUs as input. 
-
-
-
-Within each system subdirectory (`DALI`, `PyTorch`, `Minato`):  
-- **`main.py`** – Main entry point encapsulating the training pipeline.  
+Each system subdirectory (`PyTorch`, `DALI`, `Minato`) follows a similar structure:  
+- **`main.py`** – Entry point script for the full pipeline (data loading, data distribution, training).  
+- **`run_and_time.sh`** – Script to run the workload.  
+- **System-specific launcher** (`run_pytorch.sh`, `run_dali.sh`, `run_minato.sh`) – Scripts to run each system individually.  
 - **`evaluation_cases.txt`** – Fixed split of dataset cases used for evaluation.  
+- Subdirectories:  
+  - **`data_loading/`** – Data loading implementations.  
+  - **`model/`** – 3D-UNet model components.  
+  - **`runtime/`** – Training, inference, and distributed execution routines.  
 
-### Data Loading Components (`data_loading/`)
+### Repository Contents
+
+At the repository root, the most relevant files are:  
+- **`preprocessing_data/`** – Dataset preprocessing utilities (e.g., `preprocess_dataset.py` to convert the dataset to NumPy format). 
+- **`results/`** – Stores output results, organized into subdirectories by system (PyTorch, DALI, Minato).  
+- **`figures/`** – Contains plots generated from the analysis scripts.  
+- **`scripts/`** – Helper scripts:  
+  - **`cpu_gpu_usage.sh`** – Logs average CPU and GPU usage to CSV.  
+  - **`run_all.sh`** – Runs all three systems at once; accepts the number of GPUs as input.  
+  - **`plot_figure.py`**, and **`plot_usage.py`** - Plotting utilities for reproducing figures.  
+- **`checksum.json`** – Dataset case list and checksums for completeness verification.  
+- **`requirements.txt`** – Python dependencies for running 3D-UNet workload.  
+- **`Dockerfile`** – Container setup with all required dependencies.  
+- **`start_container.sh`** – Script to launch the container environment.  
+- **`speedyloader-diagram.svg`** – Workflow diagram of MinatoLoader.  
+
+
+#### Data Loading Components (`data_loading/`)
 - **`data_loader.py`** – Base implementation of the data loading interface.  
 - **`pytorch_loader.py`** – Data augmentation and iterators for PyTorch.  
 - **`nvidia_daliloader.py`** – Data pipeline implementation for DALI.  
-- **`Asynchronous_dataloader.py`** – MinatoLoader implementation with asynchronous logic.  
-
-### Model Components (`model/`)
-- **`layers.py`** – Building blocks for assembling U-Net3D.  
-- **`losses.py`** – Training and evaluation loss functions.  
-- **`unet3d.py`** – U-Net3D model definition built from `layers.py`.  
-
-### Runtime Components (`runtime/`)
-- **`arguments.py`** – Command-line argument parsing.  
-- **`callbacks.py`** – Callbacks for performance tracking, evaluation, and checkpointing.  
-- **`distributed_utils.py`** – Utilities for distributed training.  
-- **`inference.py`** – Evaluation loop and sliding-window inference.  
-- **`logging.py`** – MLPerf-compatible logging utilities.  
-- **`training.py`** – Training loop implementation.  
+- **`asynchronous_dataloader.py`** – MinatoLoader’s implementation.  
 
 
 ## 4. Benchmark & Dataset 
 
-This benchmark represents a 3D medical image segmentation task using [2019 Kidney Tumor Segmentation Challenge](https://kits19.grand-challenge.org/) dataset called [KiTS19](https://github.com/neheller/kits19). The task is carried out using a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant based on the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper.The data is stored in the [KiTS19 github repository](https://github.com/neheller/kits19). This code is taken from the [MLCommons Training Image Segmentation Workload](https://github.com/mlcommons/training/tree/master/image_segmentation/pytorch).   
+This benchmark represents a 3D medical image segmentation task using the [2019 Kidney Tumor Segmentation Challenge (KiTS19)](https://kits19.grand-challenge.org/) dataset. The task is carried out with a [U-Net3D](https://arxiv.org/pdf/1606.06650.pdf) model variant inspired by the [No New-Net](https://arxiv.org/pdf/1809.10483.pdf) paper. The KiTS19 dataset is hosted in the [official GitHub repository](https://github.com/neheller/kits19), and the baseline code originates from the [MLCommons Training Image Segmentation Workload](https://github.com/mlcommons/training/tree/master/image_segmentation/pytorch).
 
-## Steps to download and preprocess the data
+💡 **Note:** While KiTS19 serves as the primary benchmark in this artifact, we also evaluated our system on other datasets, including **COCO** ([https://cocodataset.org/#home]) for object detection and **LibriSpeech** ([https://www.openslr.org/12]) for speech recognition, to validate its generality across different workloads.
+
+
+## 📊 Steps to download and preprocess the data
+
 1. Clone the MinatoLoader Eurosys  repo
 ```bash 
-git clone git@github.com:Rahm-no/MinatoLoader.git
+git clone https://github.com/Rahm-no/MinatoLoader.git
 ```
+
 2. Build docker image [This step will take 5 min  ]
 ```bash 
-cd imseg_workload
 docker build -t minato:latest .
 ```
+
+💡 **Note:** All dependencies (system libraries, Python packages, CUDA/cuDNN, PyTorch, DALI, etc.) are automatically installed inside the Docker image.  
+No manual setup is required beyond building the container.  
+
 3. Download the data [This step will take 48 min and 27GB in storage ]
    
     To download the data please follow the instructions:
@@ -108,13 +106,6 @@ docker build -t minato:latest .
     This will download the original, non-interpolated data to `raw-data-dir/kits19/data`
 
 3. Start an interactive session in the container to run preprocessing/training.
-
-    You will need to mount two (or three) directories:
-
-    for raw data (RAW-DATA-DIR)
-    for preprocessed data (PREPROCESSED-DATA-DIR)
-    (optionally) for results (RESULTS-DIR)
-
 
     ```bash 
     mkdir data
@@ -132,32 +123,35 @@ docker build -t minato:latest .
    
     The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
-
-
-
-
 ## 4. Running the Systems
 
 All experiments must be executed **inside the provided Docker container**.  
-You can either:  
-1. **Run all systems at once** (Option A).
-2. **Run each system individually** (Option B) .  
+The general workflow is:
 
-In both cases, the **final step is evaluating results and plotting figures**.
+1. **Start the container**  
+2. **Run experiments** (all systems at once, or each individually)  
+3. **Evaluate results and generate figures**  
 
 ---
 
-### Step 1: Start the container
-First, make sure the Docker image has been built using the provided `Dockerfile`.  
-Then, launch the container with:
+### Step 1: Start the Container
+First, ensure the Docker image has been built (see Section 2).  
+Then launch the container with:
 
 ```bash
 ./start_container.sh
 ```
-This script will start the container and mount the repository. Once inside, you will find yourself in the directory of the artifact: `imseg-workload`.
-### Option A: Run All Systems at Once 
+This script mounts the repository and places you inside the root directory.
 
-To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
+
+### Step 2: Run Experiments
+
+You have two options:
+
+#### 🔹 Option A: Run All Systems
+
+Run PyTorch, DALI, and MinatoLoader sequentially with one command:
+
 ``` bash 
 ./run_all.sh NUM_GPUs
 ```
@@ -165,38 +159,55 @@ To run PyTorch, DALI, and MinatoLoader sequentially with a single command:
 
 * Example (on a node with 8×V100 GPUs): ``` ./run_all.sh 8 ```
 
-### Option B: Run each system
-### Step 2: Choose the system to run 
-Navigate into the system directory you want to evaluate. For example: ```cd DALI ```
+#### 🔹 Option B: Run Each System Individually
 
-### Step 3: Run the training script
-Each system provides a wrapper script to launch training:
+Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and launch training with:
+
 
 ``` bash 
-run_SYSTEM.sh NUM_GPUs 
+./run_SYSTEM.sh NUM_GPUs 
 ```
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
-Example: to run MinatoLoader on 8 GPUs: ``` bash run_minato.sh 8```.
-With 8 GPUs, running DALI took x seconds, Minato took around x seconds, and PyTorch takes x seconds. 
+Example: to run MinatoLoader on 8 GPUs: ``` run_minato.sh 8```.
+
 
 ## 5. Evaluate Results
 
-When you launch a run, the system will automatically:  
-- **Train a 3D U-Net model** on the preprocessed dataset,  
-- **Log training metrics**, including throughput, CPU/GPU utilization, and total runtime,  
-- **Save model checkpoints** under the `ckpts/` directory,  
-- **Write results to CSV files**, which include the measured training time. These CSV files can later be used for plotting figures and further analysis.  
+Each run will automatically:
 
-For comparability and faster turnaround, we report **time-to-train with 8 GPUs** across all systems.  
-However, you can also run with fewer GPUs (e.g., `bash run_pytorch.sh 2`), though the training will naturally take longer.  
+- Train a **3D-UNet** model on the preprocessed dataset  
+- Log training metrics (throughput, CPU/GPU utilization, total runtime) to CSV files  
+- Save checkpoints under `ckpts/`  
+- Append training time results into `results/results_allsystems.csv`  
 
-After running the experiments, you can produce visual summaries of the results:  
+---
 
-- **Training time comparison**  
-   To generate a histogram comparing the training time of the three systems (PyTorch, DALI, and MinatoLoader):  
-   ```python3 plot_figure.py```
-- **Resource utilization yimeline**
-To visualize CPU and GPU utilization over time:
-``` python3 plot_usage.py```
-These plots provide a clear picture of both performance (time-to-train) and efficiency (hardware usage) across systems.
+### Reported Time-to-Train (8 GPUs, 10 epochs)
+
+- **PyTorch**: ~81 s  
+- **DALI**: ~151 s  
+- **MinatoLoader**: ~210 s  
+
+These measurements are provided for comparability and faster turnaround.
+
+---
+
+### Generating Figures
+
+After completing the experiments, you can create visual summaries.
+
+#### Training Time Comparison
+Generate a histogram comparing runtimes across PyTorch, DALI, and Minato:
+
+```bash
+python3 scripts/plot_figure.py
+```
+#### Resource Utilization Timeline
+
+Visualize CPU/GPU utilization over time:
+```bash
+python3 scripts/plot_usage.py
+```
+
+The generated figures provide a clear view of the training time across systems and hardware utilization (CPU/GPU usage over time).
