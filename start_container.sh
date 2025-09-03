@@ -22,7 +22,7 @@ RESULTS=$(realpath ./results)
 CKPTS=$(realpath ./ckpts)
 WORKDIR=$(realpath .)
 
-CONTAINER_NAME=${CONTAINER_NAME:-train_imseg}
+CONTAINER_NAME=${CONTAINER_NAME:-train_imseg_minato}
 IMAGE=${IMAGE:-minato:latest}
 
 echo "Using paths:"
