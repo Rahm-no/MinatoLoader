@@ -146,15 +146,19 @@ Then launch the container with:
 ```
 This script mounts the repository and places you inside the root directory.
 
- **If you encounter an error that the container name is already in use:**
+**If you encounter an error that the container name is already in use:**
 
-- If the container is **still running**, stop it with:  
-  ```bash
-  docker kill train_imseg_minato ```
+- If the container is **still running**, stop it with:
+
+    ```bash
+    docker kill train_imseg_minato
+    ```
+
 - If the container has already **stopped** but still exists (check with `docker ps -a`), remove it with:
-  ```bash
-  docker rm train_imseg_minato
-```
+
+    ```bash
+    docker rm train_imseg_minato
+    ```
 
 ### Step 2: Run Experiments
 
