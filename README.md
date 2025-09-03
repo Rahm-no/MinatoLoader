@@ -86,7 +86,7 @@ cd MinatoLoader
 
 ```
 
-2. Build docker image [This step will take 5 min  ]
+2. Build docker image [⚠️ This step will take 5 min  ]
 ```bash 
 docker build -t minato:latest .
 ```
@@ -94,14 +94,11 @@ docker build -t minato:latest .
 💡 **Note:** All dependencies (system libraries, Python packages, CUDA/cuDNN, PyTorch, DALI, etc.) are automatically installed inside the Docker image.  
 No manual setup is required beyond building the container.  
 
-3. Download the data [This step will take 48 min and 27GB in storage ]
+3. Download the data [⚠️ This step will take 48 min and 27GB in storage ]
    
-    To download the data please follow the instructions:
+    To download the data, please follow the instructions:
     ```bash
-    mkdir raw-data-dir
-    cd raw-data-dir
-    git clone https://github.com/neheller/kits19
-    cd kits19
+    cd raw-data-dir/kits19
     pip3 install -r requirements.txt
     python3 -m starter_code.get_imaging
     ```
