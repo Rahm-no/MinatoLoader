@@ -146,6 +146,15 @@ Then launch the container with:
 ```
 This script mounts the repository and places you inside the root directory.
 
+ **If you encounter an error that the container name is already in use:**
+
+- If the container is **still running**, stop it with:  
+  ```bash
+  docker kill train_imseg_minato ```
+- If the container has already **stopped** but still exists (check with `docker ps -a`), remove it with:
+  ```bash
+  docker rm train_imseg_minato
+```
 
 ### Step 2: Run Experiments
 
@@ -172,7 +181,7 @@ Navigate into the chosen system’s directory (PyTorch/, DALI/, or Minato/) and 
 
 
 ``` bash 
-./run_SYSTEM.sh NUM_GPUs 
+./run_SYSTEM.sh #NUM_GPUs 
 ```
 
 Replace SYSTEM with the chosen implementation (pytorch, dali, or minato). Replace NUM_GPUs with the number of GPUs to use (e.g., 2, 4, or 8).
