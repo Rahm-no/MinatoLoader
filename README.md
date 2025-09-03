@@ -156,7 +156,7 @@ You have two options:
 Run PyTorch, DALI, and MinatoLoader sequentially with one command:
 
 ``` bash 
-./scripts/run_all.sh \#NUM_GPUs
+./scripts/run_all.sh #NUM_GPUs
 ```
 * #NUM_GPUs = number of GPUs to use (default: 8)
 
