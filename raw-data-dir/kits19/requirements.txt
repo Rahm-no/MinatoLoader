@@ -1,0 +1,6 @@
+packaging==20.9
+pillow
+nibabel
+imageio
+requests
+tqdm
