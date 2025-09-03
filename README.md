@@ -82,6 +82,8 @@ This benchmark represents a 3D medical image segmentation task using the [2019 K
 1. Clone the MinatoLoader Eurosys  repo
 ```bash 
 git clone https://github.com/Rahm-no/MinatoLoader.git
+cd MinatoLoader
+
 ```
 
 2. Build docker image [This step will take 5 min  ]
