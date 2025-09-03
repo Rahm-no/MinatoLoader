@@ -116,12 +116,12 @@ No manual setup is required beyond building the container.
 2. Preprocess the dataset [This step will take ~13 min and 29GB of storage].
    
     
-    The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is to invoke the script with correct paths:
+    The data preprocessing script is called `preprocess_dataset.py`. All the required hyperparameters are already set. All you need to do is invoke the script with the correct paths:
     ```bash
     python3 preprocess_dataset.py --data_dir /raw_data --results_dir /data
     ```
    
-    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean and stddev of the voxel intensity. Also, it will run a checksum on each file comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
+    The script will preprocess each volume and save it as a numpy array at `/data`. It will also display some statistics like the volume shape, mean, and stddev of the voxel intensity. Also, it will run a checksum on each file, comparing it with the source. This preprocessing step will produce a numpy array for each image (presented by _x) and its corresponding label(presented by _y). 
 
 ## 🚀 Running the Systems
 
@@ -135,8 +135,10 @@ The general workflow is:
 ---
 
 ### Step 1: Start the Container (if not already started)
+First, ensure the Docker image has been built (see above).
+
 ⚠️ You may have already started the container (steps 1-4 of ## Benchmark & Dataset). If you are following the steps from the beginning, you are probably already inside the container (in this case, directly continue to step 2!)
-First, ensure the Docker image has been built (see above).  
+  
 Then launch the container with:
 
 ```bash
@@ -154,7 +156,7 @@ You have two options:
 Run PyTorch, DALI, and MinatoLoader sequentially with one command:
 
 ``` bash 
-./scripts/run_all.sh #NUM_GPUs
+./scripts/run_all.sh \#NUM_GPUs
 ```
 * #NUM_GPUs = number of GPUs to use (default: 8)
 
