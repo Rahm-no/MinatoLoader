@@ -135,6 +135,7 @@ The general workflow is:
 ---
 
 ### Step 1: Start the Container (if not already started)
+⚠️ You may have already started the container (steps 1-4 of ## Benchmark & Dataset). If you are following the steps from the beginning, you are probably already inside the container (in this case, directly continue to step 2!)
 First, ensure the Docker image has been built (see above).  
 Then launch the container with:
 
@@ -153,9 +154,9 @@ You have two options:
 Run PyTorch, DALI, and MinatoLoader sequentially with one command:
 
 ``` bash 
-./scripts/run_all.sh NUM_GPUs
+./scripts/run_all.sh #NUM_GPUs
 ```
-* NUM_GPUs = number of GPUs to use (default: 8)
+* #NUM_GPUs = number of GPUs to use (default: 8)
 
 * Example (on a node with 8×V100 GPUs): ``` ./scripts/run_all.sh 8 ```
 
