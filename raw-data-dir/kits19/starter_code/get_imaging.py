@@ -17,7 +17,7 @@ def get_destination(i):
     destination = Path("__file__").parent.parent /\
         "data" / "case_{:05d}".format(i) / "imaging.nii.gz"
     if not destination.parent.exists():
-        destination.parent.mkdir()
+        destination.parent.mkdir(parents=True, exist_ok=True)
     return destination
 
 

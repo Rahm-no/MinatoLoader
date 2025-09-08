@@ -108,7 +108,6 @@ No manual setup is required beyond building the container.
 
     ```bash 
     cd ../.. # return to root directory 
-    mkdir data
     mkdir results
     ./start_container.sh
     ```
@@ -146,7 +145,7 @@ Then launch the container with:
 ```
 This script mounts the repository and places you inside the root directory.
 
-**If you encounter an error that the container name is already in use:**
+⚠️ **If you encounter an error that the container name is already in use:**
 
 - If the container is **still running**, stop it with:
 
