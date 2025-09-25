@@ -250,9 +250,6 @@ def sharded_pipeline(files1, files2, device_id, shard_id, num_shards,
         images = fn.crop(images, crop=patch_size)
         labels = fn.crop(labels, crop=patch_size)
 
-        
-
-        # --- Multiple heavy passes ---
         for _ in range(num_trials):
            
             # Gaussian noise + blur
