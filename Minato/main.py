@@ -122,6 +122,12 @@ def main():
     mllog_start(key=constants.RUN_START, sync=True)
 
     train_dataloader, val_dataloader = get_data_loaders(flags, num_shards=world_size, global_rank=local_rank, device=device, slow_queue=slow_queue, slow_processed_queue=slow_processed_queue)
+    t_out = getattr(train_dataloader.dataset, "sample_timeout", None)
+    if t_out is not None:
+        mllog_event(key='minato_t_out', value=t_out, sync=False)
+        if local_rank == 0:
+            print("[minato] calibrated t_out = %.4fs (P%.0f of the warm-up pass)"
+                  % (t_out, flags.calib_percentile))
     mllog_event(key='len train_dataloader', value=len(train_dataloader), sync=False)
     mllog_event(key='len val_dataloader', value=len(val_dataloader), sync=False)
 
@@ -145,6 +151,12 @@ def main():
               device=device, callbacks=callbacks, is_distributed=is_distributed, throughput_file=throughput_file)
         t1 = time.time()
         total_time = t1 - t0
+        if flags.profile_dir and local_rank == 0:
+            try:
+                from tools.minato_report import build_report, print_report
+                print_report(build_report(flags.profile_dir))
+            except Exception as exc:
+                print("[minato] could not build the profile report: %r" % (exc,))
      
 
     elif flags.exec_mode == 'evaluate':

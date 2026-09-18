@@ -5,8 +5,32 @@ import scipy.ndimage
 from torch.utils.data import Dataset
 from torchvision import transforms
 import os
-from runtime.logging import mllog_event
 import torch.multiprocessing as mp
+
+try:  # optional: lets the loader be imported without the mlperf/dllogger stack
+    from runtime.logging import mllog_event
+except Exception:  # pragma: no cover
+    def mllog_event(*args, **kwargs):
+        pass
+
+try:
+    from data_loading.minato_profiling import (
+        MigrationRecorder, MinatoConfig, StageAborted, TimeoutCalibrator,
+        build_stages, clone_data, run_stages, stage_names,
+    )
+except ImportError:  # running from inside data_loading/
+    from minato_profiling import (
+        MigrationRecorder, MinatoConfig, StageAborted, TimeoutCalibrator,
+        build_stages, clone_data, run_stages, stage_names,
+    )
+
+# scipy >= 1.10 deprecated `scipy.ndimage.measurements`; it is scheduled for
+# removal in 2.0 and already raises under -W error on recent laptops.
+_ndimage_label = getattr(scipy.ndimage, "label", None)
+if _ndimage_label is None:  # pragma: no cover
+    _ndimage_label = scipy.ndimage.measurements.label
+
+
 def get_train_transforms():
     rand_flip = RandFlip()
     cast = Cast(types=(np.float32, np.uint8))
@@ -108,7 +132,7 @@ class RandBalancedCrop:
             return low, high
 
         cl = np.random.choice(np.unique(label[label > 0]))
-        foreg_slices = scipy.ndimage.find_objects(scipy.ndimage.measurements.label(label==cl)[0])
+        foreg_slices = scipy.ndimage.find_objects(_ndimage_label(label == cl)[0])
         foreg_slices = [x for x in foreg_slices if x is not None]
         slice_volumes = [np.prod([s.stop - s.start for s in sl]) for sl in foreg_slices]
         slice_idx = np.argsort(slice_volumes)[-2:]
@@ -181,26 +205,68 @@ class GaussianNoise:
 
 import time
 import numpy as np
-import pandas as pd
 from torch.utils.data import Dataset
-def slow_worker(images, labels, patch_size, oversampling, transforms,slow_queue, slow_processed_queue):
+def _decode_migration(item):
+    """Normalise whatever the front worker put on the slow queue.
+
+    New protocol : (idx, resume_stage, image, label)
+    Legacy        : idx                       -> restart from stage 0
+    """
+    if isinstance(item, (int, np.integer)):
+        return int(item), 0, None, None
+    idx, resume_stage, image, label = item
+    return int(idx), int(resume_stage), image, label
+
+
+def slow_worker(images, labels, patch_size, oversampling, transforms,
+                slow_queue, slow_processed_queue, cfg=None, worker_id=0):
+    """Background worker: resume a migrated sample at its transformation index.
+
+    The sample arrives partially processed, together with the index of the
+    stage that was in flight when the front worker gave up.  We re-execute
+    only that stage and everything after it -- not the whole pipeline.
+    """
+    cfg = cfg or MinatoConfig()
     rand_crop = RandBalancedCrop(patch_size=patch_size, oversampling=oversampling)
+    stages = build_stages(rand_crop, transforms)
+    n_stages = len(stages)
+    recorder = MigrationRecorder(cfg.profile_dir, "bg")
+
     while True:
-        idx = slow_queue.get()
-        if idx is None:
+        item = slow_queue.get()
+        if item is None:
             break  # Signal to stop
         try:
-            data = {"image": images[idx], "label": labels[idx]}
-            data = rand_crop(data)
-            for transform in transforms.transforms:
-                data = transform(data)
-            slow_processed_queue.put(( data["image"], data["label"]))
+            idx, resume_stage, image, label = _decode_migration(item)
+            resume_stage = max(0, min(resume_stage, n_stages))
+            if image is None:
+                # Nothing had completed yet in the front worker (or a legacy
+                # index-only message): fall back to the full pipeline.
+                data = {"image": images[idx], "label": labels[idx]}
+                resume_stage = 0
+            else:
+                data = {"image": image, "label": label}
+
+            timings = []
+            t0 = time.perf_counter()
+            data = run_stages(stages, data, start_index=resume_stage,
+                              checkpoint=None, abort_event=None, timings=timings)
+            elapsed = time.perf_counter() - t0
+
+            slow_processed_queue.put((data["image"], data["label"]))
+            recorder.write("resume", idx, stage=resume_stage, n_stages=n_stages,
+                           elapsed_s=elapsed, stage_times=timings)
+            if cfg.verbose:
+                print("[minato/bg %d] idx=%d resumed at stage %d/%d (%s) in %.4fs"
+                      % (worker_id, idx, resume_stage, n_stages,
+                         stages[resume_stage][0] if resume_stage < n_stages else "-",
+                         elapsed))
         except Exception as e:
-            print(f"[Slow Worker] Failed processing idx {idx}: {e}")
+            print(f"[Slow Worker] Failed processing item {item!r}: {e}")
+            recorder.write("resume_fail", -1)
 
 import time
 import numpy as np
-import pandas as pd
 from torch.utils.data import Dataset
 import concurrent.futures
 import time
@@ -215,24 +281,57 @@ from torch.utils.data import Dataset
 import concurrent.futures
 
 class PytTrain(Dataset):
-    def __init__(self, images, labels, slow_queue, slow_processed_queue, **kwargs):
+    """Front-end dataset.
+
+    Two changes relative to the original artifact:
+
+    * ``t_out`` is no longer the constant 2.0 s.  A warm-up profiling pass
+      measures the end-to-end latency distribution of this workload and sets
+      ``t_out`` to ``--calib_percentile`` (P75) of it.
+    * A sample that exceeds ``t_out`` is not thrown away.  The pipeline runs
+      as an indexed list of stages that checkpoints after each stage, so the
+      migration payload is ``(idx, resume_stage, image, label)`` and the
+      background worker resumes at ``resume_stage``.
+    """
+
+    def __init__(self, images, labels, slow_queue, slow_processed_queue,
+                 train_transforms=None, **kwargs):
         self.images = images
         self.labels = labels
-        self.train_transforms = get_train_transforms()
+        self.train_transforms = train_transforms if train_transforms is not None \
+            else get_train_transforms()
         self.patch_size = kwargs["patch_size"]
         self.oversampling = kwargs["oversampling"]
         self.rand_crop = RandBalancedCrop(self.patch_size, self.oversampling)
 
         self.slow_queue = slow_queue
         self.slow_processed_queue = slow_processed_queue
-        self.sample_timeout = 2
+
+        self.cfg = kwargs.get("minato_cfg") or MinatoConfig(
+            **{k: v for k, v in kwargs.items() if k in MinatoConfig.FIELDS})
 
         # Preload into RAM (or use mmap_mode="r" if too large)
         self.images_data = [np.load(f, mmap_mode="r") for f in self.images]
         self.labels_data = [np.load(f, mmap_mode="r") for f in self.labels]
 
-        # Thread pool executor for enforcing timeouts
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        # The pipeline as an indexed list; position == resume index.
+        self.stages = build_stages(self.rand_crop, self.train_transforms)
+        self.n_stages = len(self.stages)
+
+        self.recorder = MigrationRecorder(self.cfg.profile_dir, "front")
+
+        # Thread pool is created lazily *per process*: DataProducer forks this
+        # object, and an inherited pool with live threads deadlocks the child.
+        self._executor = None
+        self._executor_pid = None
+
+        # ---- warm-up profiling pass -> workload-relative t_out -----------
+        self.calibration = self._calibrate()
+        self.sample_timeout = float(self.calibration["t_out"])
+        self.recorder.dump_calibration(self.calibration, "train")
+        mllog_event(key="minato_t_out", value=self.sample_timeout, sync=False)
+        mllog_event(key="minato_t_out_percentile",
+                    value=self.cfg.calib_percentile, sync=False)
 
         # Start slow workers
         self.slow_workers = [
@@ -241,33 +340,193 @@ class PytTrain(Dataset):
                 args=(self.images_data, self.labels_data,
                       self.patch_size, self.oversampling,
                       self.train_transforms,
-                      self.slow_queue, self.slow_processed_queue)
-            ) for _ in range(3)
+                      self.slow_queue, self.slow_processed_queue,
+                      self.cfg, i)
+            ) for i in range(max(0, int(self.cfg.num_slow_workers)))
         ]
         for w in self.slow_workers:
+            w.daemon = True
             w.start()
 
+    # ------------------------------------------------------------------
     def __len__(self):
         return len(self.images)
 
-    def _preprocess_sample(self, idx):
-        """Fast preprocessing path."""
-        data = {"image": self.images_data[idx], "label": self.labels_data[idx]}
-        data = self.rand_crop(data)
-        for transform in self.train_transforms.transforms:
-            data = transform(data)
-        return data["image"], data["label"]
+    def _get_executor(self):
+        pid = os.getpid()
+        if self._executor is None or self._executor_pid != pid:
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=max(1, int(self.cfg.front_threads)),
+                thread_name_prefix="minato-front-%d" % pid)
+            self._executor_pid = pid
+        return self._executor
 
-    def __getitem__(self, idx):
-        # Submit fast path to thread pool with timeout
-        future = self.executor.submit(self._preprocess_sample, idx)
+    # ---- calibration --------------------------------------------------
+    def _measure_sample(self, executor, idx):
+        """One profiled pass over the full pipeline.
+
+        Deliberately runs through the *same* thread pool, checkpointing and
+        clock as ``__getitem__``.  Measuring the pipeline synchronously here
+        and then comparing against a threaded run at training time biases
+        t_out low by the thread-handoff cost, which on a tight latency
+        distribution is enough to migrate every single sample.
+        """
+        timings = []
+        state = {}
+        started = threading.Event()
+
+        def checkpoint(stage, data):
+            state["stage"] = stage
+            state["data"] = data
+
+        def work():
+            started.set()
+            data = {"image": self.images_data[idx], "label": self.labels_data[idx]}
+            return run_stages(self.stages, data, start_index=0,
+                              checkpoint=checkpoint, abort_event=None,
+                              timings=timings,
+                              copy_checkpoints=self.cfg.checkpoint_copy)
+
+        future = executor.submit(work)
+        started.wait(timeout=self.cfg.queue_wait_timeout)
+        t0 = time.perf_counter()
+        future.result()
+        return time.perf_counter() - t0, timings
+
+    def _calibrate(self):
+        # A throwaway pool: its threads are joined before DataProducer forks
+        # this dataset, so no child inherits a half-dead executor.
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, int(self.cfg.front_threads)),
+            thread_name_prefix="minato-calib")
         try:
-            return future.result(timeout=self.sample_timeout)
+            calibrator = TimeoutCalibrator(self.cfg, self.stages, tag="train")
+            result = calibrator.calibrate(
+                lambda idx: self._measure_sample(executor, idx),
+                n_dataset=len(self.images),
+                seed=1234,
+                extra={"patch_size": list(self.patch_size),
+                       "oversampling": float(self.oversampling)})
+        finally:
+            executor.shutdown(wait=True)
+        return _broadcast_t_out(result)
+
+    # ---- the front path ------------------------------------------------
+    def __getitem__(self, idx):
+        state = {"stage": 0, "data": None}
+        lock = threading.Lock()
+        abort = threading.Event()
+        started = threading.Event()
+        timings = []
+
+        def checkpoint(stage, data):
+            with lock:
+                state["stage"] = stage
+                state["data"] = data
+
+        def work():
+            started.set()
+            data = {"image": self.images_data[idx], "label": self.labels_data[idx]}
+            return run_stages(self.stages, data, start_index=0,
+                              checkpoint=checkpoint, abort_event=abort,
+                              timings=timings,
+                              copy_checkpoints=self.cfg.checkpoint_copy)
+
+        submitted = time.perf_counter()
+        future = self._get_executor().submit(work)
+        # Do not start the deadline until the pool actually picks the task up,
+        # otherwise queueing behind another sample looks like a slow sample.
+        started.wait(timeout=self.cfg.queue_wait_timeout)
+        queue_wait = time.perf_counter() - submitted
+        t0 = time.perf_counter()
+
+        try:
+            data = future.result(timeout=self.sample_timeout)
+            elapsed = time.perf_counter() - t0
+            if self.cfg.profile_fast_samples:
+                self.recorder.write("fast", idx, stage=self.n_stages,
+                                    n_stages=self.n_stages,
+                                    queue_wait_s=queue_wait, elapsed_s=elapsed,
+                                    preserved_s=elapsed, stage_times=timings)
+            else:
+                self.recorder.write("fast", idx, elapsed_s=elapsed)
+            return data["image"], data["label"]
+
         except concurrent.futures.TimeoutError:
-            # Send to slow queue if timeout
-            self.slow_queue.put(idx)
-       
+            # Migrate. Tell the in-flight stage to stop at the next boundary
+            # and ship the last checkpoint, not the raw index.
+            abort.set()
+            future.add_done_callback(lambda f: f.exception())  # swallow
+            elapsed = time.perf_counter() - t0
+            with lock:
+                stage = state["stage"]
+                partial = state["data"]
+            preserved = sum(dt for _, dt in timings[:stage])
+            wasted = max(0.0, elapsed - preserved)
+
+            if partial is None:
+                # Stage 0 itself blew the budget: nothing to resume from.
+                self.slow_queue.put((idx, 0, None, None))
+            else:
+                self.slow_queue.put((idx, stage, partial["image"], partial["label"]))
+
+            self.recorder.write("migrate", idx, stage=stage, n_stages=self.n_stages,
+                                queue_wait_s=queue_wait, elapsed_s=elapsed,
+                                preserved_s=preserved, wasted_s=wasted,
+                                stage_times=timings)
+            if self.cfg.verbose:
+                print("[minato/front] idx=%d migrated after %.4fs (t_out=%.4fs) "
+                      "at stage %d/%d; %.4fs preserved, %.4fs re-executed"
+                      % (idx, elapsed, self.sample_timeout, stage,
+                         self.n_stages, preserved, wasted))
             return None
+
+    # ---- teardown -------------------------------------------------------
+    def shutdown(self):
+        for _ in getattr(self, "slow_workers", []):
+            try:
+                self.slow_queue.put(None)
+            except Exception:
+                pass
+        for w in getattr(self, "slow_workers", []):
+            w.join(timeout=5)
+            if w.is_alive():
+                w.terminate()
+        if self._executor is not None and self._executor_pid == os.getpid():
+            self._executor.shutdown(wait=False)
+        self.recorder.close()
+
+
+def _broadcast_t_out(result):
+    """Rank 0 profiles, everyone else reuses its t_out.
+
+    Keeps the threshold identical across data-parallel ranks and avoids paying
+    the warm-up cost N times.  Falls back to the local value if anything about
+    the process group is unusual.
+    """
+    try:
+        import torch
+        import torch.distributed as dist
+        if not (dist.is_available() and dist.is_initialized()):
+            return result
+        if dist.get_world_size() < 2:
+            return result
+        backend = dist.get_backend()
+        device = "cpu"
+        if backend == "nccl" and torch.cuda.is_available():
+            device = torch.device("cuda", torch.cuda.current_device())
+        tensor = torch.tensor([float(result["t_out"])], dtype=torch.float64,
+                              device=device)
+        dist.broadcast(tensor, src=0)
+        agreed = float(tensor.item())
+        if agreed != result["t_out"]:
+            result = dict(result)
+            result["t_out_local"] = result["t_out"]
+            result["t_out"] = agreed
+            result["source"] = result.get("source", "") + "+broadcast"
+    except Exception as exc:  # pragma: no cover
+        print("[minato/calib] broadcast skipped (%r); using local t_out" % (exc,))
+    return result
 
 class PytVal(Dataset):
     def __init__(self, images, labels):

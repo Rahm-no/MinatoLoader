@@ -11,6 +11,7 @@ from torch.utils.data.distributed import DistributedSampler
 from data_loading.Asynchrnous_dataloader import AsynchronousLoader
 import queue 
 from data_loading.pytorch_loader import PytVal, PytTrain
+from data_loading.minato_profiling import MinatoConfig
 from runtime.logging import mllog_event , mllog_end , mllog_start
 import torch.multiprocessing as mp
 import threading
@@ -90,6 +91,17 @@ class SyntheticDataset(Dataset):
 
 
 
+def build_minato_config(flags):
+    """Translate CLI flags into the loader's calibration/migration config."""
+    picked = {}
+    for name in MinatoConfig.FIELDS:
+        if hasattr(flags, name):
+            picked[name] = getattr(flags, name)
+    # --verbose already means "tqdm progress bar"; keep the two separate.
+    picked["verbose"] = bool(getattr(flags, "verbose_minato", False))
+    return MinatoConfig(**picked)
+
+
 def get_data_loaders(flags, num_shards, global_rank, device,slow_queue, slow_processed_queue):
     if flags.loader == "synthetic":
         train_dataset = SyntheticDataset(scalar=True, shape=flags.input_shape, layout=flags.layout)
@@ -97,7 +109,11 @@ def get_data_loaders(flags, num_shards, global_rank, device,slow_queue, slow_pro
 
     elif flags.loader == "pytorch":
         x_train, x_val, y_train, y_val = get_data_split(flags.data_dir, num_shards, shard_id=global_rank)
-        train_data_kwargs = {"patch_size": flags.input_shape, "oversampling": flags.oversampling, "seed": flags.seed}
+        minato_cfg = build_minato_config(flags)
+        if global_rank == 0:
+            print("[minato] %r" % (minato_cfg,))
+        train_data_kwargs = {"patch_size": flags.input_shape, "oversampling": flags.oversampling,
+                             "seed": flags.seed, "minato_cfg": minato_cfg}
         train_dataset = PytTrain(x_train, y_train,slow_queue,slow_processed_queue, **train_data_kwargs)
         val_dataset = PytVal(x_val, y_val)
     else:

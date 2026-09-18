@@ -20,6 +20,17 @@ LR_WARMUP_EPOCHS=10
 DATASET_DIR="/data"
 RAW_DATASET_DIR="/raw_data"
 GRADIENT_ACCUMULATION_STEPS=1
+
+# --- Minato: warm-up calibration of t_out -----------------------------------
+# CALIB_SECONDS=0 disables profiling and falls back to SAMPLE_TIMEOUT.
+CALIB_SECONDS=${CALIB_SECONDS:-600}
+CALIB_PERCENTILE=${CALIB_PERCENTILE:-75}
+CALIB_MARGIN=${CALIB_MARGIN:-1.0}
+CALIB_CACHE=${CALIB_CACHE:-/results/minato_calibration.json}
+PROFILE_DIR=${PROFILE_DIR:-/results/minato_profile}
+SAMPLE_TIMEOUT=${SAMPLE_TIMEOUT:-2.0}
+NUM_SLOW_WORKERS=${NUM_SLOW_WORKERS:-3}
+if [ "${CALIB_SECONDS}" = "0" ]; then CALIBRATE=false; else CALIBRATE=true; fi
 SAVE_CKPT_PATH="/ckpts"
 
 if [ -d ${DATASET_DIR} ]
@@ -54,7 +65,15 @@ python3 -c "import torch; print(torch.__version__)"
     --seed ${SEED} \
     --lr_warmup_epochs ${LR_WARMUP_EPOCHS} \
     --save_ckpt_path ${SAVE_CKPT_PATH} \
-    --num_workers ${NUM_WORKERS}
+    --num_workers ${NUM_WORKERS} \
+    --calibrate ${CALIBRATE} \
+    --calib_seconds ${CALIB_SECONDS} \
+    --calib_percentile ${CALIB_PERCENTILE} \
+    --calib_margin ${CALIB_MARGIN} \
+    --calib_cache ${CALIB_CACHE} \
+    --sample_timeout ${SAMPLE_TIMEOUT} \
+    --num_slow_workers ${NUM_SLOW_WORKERS} \
+    --profile_dir ${PROFILE_DIR}
 
     # end timing
     end=$(date +%s)
