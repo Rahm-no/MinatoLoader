@@ -1,0 +1,11 @@
+# Core. Install torch/torchvision/torchaudio for your platform first:
+#   Linux + CUDA : https://pytorch.org/get-started/locally/
+#   macOS        : pip install torch torchvision torchaudio
+torch
+torchvision
+torchaudio
+pillow
+numpy
+psutil
+# Linux + NVIDIA only; the monitor degrades to CPU-only without it.
+nvidia-ml-py; sys_platform == "linux"

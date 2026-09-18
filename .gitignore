@@ -16,3 +16,8 @@ ckpts/*
 Minato/data_loading_old/** 
 ckpts/*
 
+
+# H-AIP experiment outputs
+experiments/vuln-matrix/results/
+experiments/vuln-matrix/manifests/
+experiments/vuln-matrix/.venv/
