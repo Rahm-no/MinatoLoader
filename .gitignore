@@ -21,3 +21,12 @@ ckpts/*
 experiments/vuln-matrix/results/
 experiments/vuln-matrix/manifests/
 experiments/vuln-matrix/.venv/
+
+# Ignore patches
+*.patch
+
+# Ignore venv
+.venv
+
+# Ignore Mac Directories
+.DS_Store
