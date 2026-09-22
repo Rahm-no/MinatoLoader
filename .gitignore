@@ -21,7 +21,7 @@ ckpts/*
 experiments/vuln-matrix/results/
 experiments/vuln-matrix/manifests/
 experiments/vuln-matrix/.venv/
-
+experiments/vuln-matrix/hmp/__pycache__/
 # Ignore patches
 *.patch
 
