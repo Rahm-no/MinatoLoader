@@ -15,13 +15,15 @@ except Exception:  # pragma: no cover
 
 try:
     from data_loading.minato_profiling import (
-        MigrationRecorder, MinatoConfig, StageAborted, TimeoutCalibrator,
-        build_stages, clone_data, run_stages, stage_names,
+        MigrationRecorder, MinatoConfig, SharedThreshold, StageAborted,
+        ThresholdController, TimeoutCalibrator, build_stages, clone_data,
+        run_stages, stage_names,
     )
 except ImportError:  # running from inside data_loading/
     from minato_profiling import (
-        MigrationRecorder, MinatoConfig, StageAborted, TimeoutCalibrator,
-        build_stages, clone_data, run_stages, stage_names,
+        MigrationRecorder, MinatoConfig, SharedThreshold, StageAborted,
+        ThresholdController, TimeoutCalibrator, build_stages, clone_data,
+        run_stages, stage_names,
     )
 
 # scipy >= 1.10 deprecated `scipy.ndimage.measurements`; it is scheduled for
@@ -219,7 +221,8 @@ def _decode_migration(item):
 
 
 def slow_worker(images, labels, patch_size, oversampling, transforms,
-                slow_queue, slow_processed_queue, cfg=None, worker_id=0):
+                slow_queue, slow_processed_queue, cfg=None, worker_id=0,
+                stats_queue=None):
     """Background worker: resume a migrated sample at its transformation index.
 
     The sample arrives partially processed, together with the index of the
@@ -256,6 +259,11 @@ def slow_worker(images, labels, patch_size, oversampling, transforms,
             slow_processed_queue.put((data["image"], data["label"]))
             recorder.write("resume", idx, stage=resume_stage, n_stages=n_stages,
                            elapsed_s=elapsed, stage_times=timings)
+            if stats_queue is not None:
+                try:
+                    stats_queue.put(("resume", idx, elapsed))
+                except Exception:
+                    pass
             if cfg.verbose:
                 print("[minato/bg %d] idx=%d resumed at stage %d/%d (%s) in %.4fs"
                       % (worker_id, idx, resume_stage, n_stages,
@@ -328,6 +336,23 @@ class PytTrain(Dataset):
         # ---- warm-up profiling pass -> workload-relative t_out -----------
         self.calibration = self._calibrate()
         self.sample_timeout = float(self.calibration["t_out"])
+
+        # t_out lives in shared memory whether or not adaptation is on, so the
+        # fixed and adaptive paths run identical per-sample code.
+        self.threshold = SharedThreshold(self.sample_timeout,
+                                         self.cfg.calib_percentile)
+        self.stats_queue = mp.Queue() if self.cfg.adapt else None
+        self.controller = None
+        if self.cfg.adapt:
+            self.controller = ThresholdController(
+                self.threshold, self.stats_queue, self.cfg,
+                profile_dir=self.cfg.profile_dir)
+            self.controller.start()
+            print("[minato/adapt] background profiler running: P%.0f, fallback "
+                  "P%.0f at migration rate > %.2f, censoring=%s"
+                  % (self.cfg.calib_percentile,
+                     self.cfg.adapt_fallback_percentile,
+                     self.cfg.adapt_escalate_rate, self.cfg.adapt_censoring))
         self.recorder.dump_calibration(self.calibration, "train")
         mllog_event(key="minato_t_out", value=self.sample_timeout, sync=False)
         mllog_event(key="minato_t_out_percentile",
@@ -341,7 +366,7 @@ class PytTrain(Dataset):
                       self.patch_size, self.oversampling,
                       self.train_transforms,
                       self.slow_queue, self.slow_processed_queue,
-                      self.cfg, i)
+                      self.cfg, i, self.stats_queue)
             ) for i in range(max(0, int(self.cfg.num_slow_workers)))
         ]
         for w in self.slow_workers:
@@ -413,6 +438,9 @@ class PytTrain(Dataset):
 
     # ---- the front path ------------------------------------------------
     def __getitem__(self, idx):
+        # Re-read per sample: a rewritten threshold takes effect on the next
+        # sample rather than the next epoch. A stale read is harmless.
+        sample_timeout = self.threshold.get()
         state = {"stage": 0, "data": None}
         lock = threading.Lock()
         abort = threading.Event()
@@ -441,8 +469,13 @@ class PytTrain(Dataset):
         t0 = time.perf_counter()
 
         try:
-            data = future.result(timeout=self.sample_timeout)
+            data = future.result(timeout=sample_timeout)
             elapsed = time.perf_counter() - t0
+            if self.stats_queue is not None:
+                try:
+                    self.stats_queue.put(("fast", idx, elapsed))
+                except Exception:
+                    pass
             if self.cfg.profile_fast_samples:
                 self.recorder.write("fast", idx, stage=self.n_stages,
                                     n_stages=self.n_stages,
@@ -470,6 +503,11 @@ class PytTrain(Dataset):
             else:
                 self.slow_queue.put((idx, stage, partial["image"], partial["label"]))
 
+            if self.stats_queue is not None:
+                try:
+                    self.stats_queue.put(("migrate", idx, elapsed))
+                except Exception:
+                    pass
             self.recorder.write("migrate", idx, stage=stage, n_stages=self.n_stages,
                                 queue_wait_s=queue_wait, elapsed_s=elapsed,
                                 preserved_s=preserved, wasted_s=wasted,
@@ -477,12 +515,16 @@ class PytTrain(Dataset):
             if self.cfg.verbose:
                 print("[minato/front] idx=%d migrated after %.4fs (t_out=%.4fs) "
                       "at stage %d/%d; %.4fs preserved, %.4fs re-executed"
-                      % (idx, elapsed, self.sample_timeout, stage,
+                      % (idx, elapsed, sample_timeout, stage,
                          self.n_stages, preserved, wasted))
             return None
 
     # ---- teardown -------------------------------------------------------
     def shutdown(self):
+        if getattr(self, "controller", None) is not None:
+            self.controller.stop()
+            self.controller.join(timeout=15)
+            print("[minato/adapt] %r" % (self.controller.summary(),))
         for _ in getattr(self, "slow_workers", []):
             try:
                 self.slow_queue.put(None)

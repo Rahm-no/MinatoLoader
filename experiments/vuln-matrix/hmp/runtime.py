@@ -75,6 +75,10 @@ def baseline_loader(rows, cfg):
         tensors = [it[0] for it in items]
         try:
             batch = torch.stack(tensors)
+            if batch.dim() == 5:
+                # SimCLR: (B, views, C, H, W) -> (B*views, C, H, W), the shape
+                # a contrastive loss consumes.
+                batch = batch.flatten(0, 1)
         except Exception:
             batch = tensors
         return (batch, [it[1] for it in items], sum(it[2] for it in items),
@@ -220,6 +224,10 @@ SUMMARY_FIELDS = [
     "n_samples", "manifest_fingerprint", "seed", "consumer",
     "t_out_s", "t_out_percentile", "warmup_n", "warmup_p50_s", "warmup_p95_s",
     "warmup_slow_below_t_out_frac",
+    "adapt", "adapt_censoring", "adapt_updates", "adapt_escalations",
+    "adapt_deescalations", "adapt_t_out_final", "adapt_t_out_min",
+    "adapt_t_out_max", "adapt_percentile_final", "adapt_seconds_at_fallback",
+    "t_out_at_migration_p50", "t_out_at_migration_max",
     "epoch_wall_s", "throughput_samples_s", "consumer_wall_s",
     "sample_p50_s", "sample_p95_s", "sample_p99_s",
     "batch_mean_s", "batch_p50_s", "batch_p95_s", "batch_p99_s",
@@ -256,7 +264,7 @@ def read_events(run_dir):
         with open(path, newline="") as fh:
             for r in csv.DictReader(fh):
                 for k in ("duration_s", "queue_wait_s", "detect_s", "wasted_s",
-                          "preserved_s"):
+                          "preserved_s", "t_out_s"):
                     r[k] = float(r[k]) if r.get(k) not in (None, "") else 0.0
                 for k in ("order", "resume_stage", "n_stages", "is_sentinel"):
                     try:
@@ -330,6 +338,10 @@ def summarise(run_dir, meta):
     n_total = meta.get("n_samples") or max(1, len(completed))
     row["detect_tax_per_sample_s"] = detect / float(n_total)
     row["wasted_cpu_resume_s"] = sum(e["wasted_s"] for e in migrations)
+    tv = [e["t_out_s"] for e in migrations if e.get("t_out_s")]
+    if tv:
+        row["t_out_at_migration_p50"] = _q(tv, 50)
+        row["t_out_at_migration_max"] = _q(tv, 100)
 
     stage_median = meta.get("stage_median_s") or {}
     full_cost = sum(stage_median.values()) if stage_median else 0.0

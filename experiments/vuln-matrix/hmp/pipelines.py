@@ -138,6 +138,102 @@ def openimages_pipeline(size=224, jitter=0.4, blur_kernel=9,
 
 
 # ---------------------------------------------------------------------------
+# OpenImages + SimCLR (two augmented views per sample)
+# ---------------------------------------------------------------------------
+
+@register("openimages_simclr")
+def openimages_simclr_pipeline(size=224, jitter=0.4, grayscale_p=0.2,
+                               blur_kernel=23, blur_sigma=(0.1, 2.0),
+                               jitter_p=0.8, read_to_memory=True):
+    """SimCLR: the augmentation stack applied twice to the same decoded image.
+
+    The two views are laid out as one *linear* stage list -- read, decode, then
+    view 1's six stages, then view 2's six stages, then stack. That keeps the
+    resume index meaningful: a migration during view 2 carries the finished
+    view 1 with it, and only the interrupted view-2 stage is re-executed. An
+    interleaved or parallel two-view implementation would have no single
+    integer resume point, which is presumably part of why the original scoping
+    excluded SimCLR.
+
+    Two consequences worth measuring rather than assuming:
+
+      * The decoded source image must be retained until view 2 finishes, so
+        every checkpoint copy between stages 2 and 13 carries the full decoded
+        image *plus* the partial view. On a 2400px OpenImages sample that is
+        tens of MB per checkpoint. Compare against --checkpoint_copy false.
+      * Per-sample cost roughly doubles while decode cost does not, so decode
+        is a smaller share of the total than in the single-view pipeline. That
+        should *reduce* migrations-at-stage-0 relative to the single-view runs,
+        which is the one respect in which SimCLR suits resume-from-index
+        better.
+    """
+    from PIL import Image
+    from torchvision import transforms as T
+
+    base = openimages_simclr_pipeline  # noqa: F841  (marker for introspection)
+
+    crop = T.RandomResizedCrop(size, scale=(0.2, 1.0))
+    flip = T.RandomHorizontalFlip(p=0.5)
+    jit = T.RandomApply([T.ColorJitter(jitter, jitter, jitter,
+                                       min(0.5, jitter / 2.0))], p=jitter_p)
+    gray = T.RandomGrayscale(p=grayscale_p)
+    blur = T.GaussianBlur(kernel_size=blur_kernel, sigma=blur_sigma)
+    to_tensor = T.ToTensor()
+    norm = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+    def read(payload):
+        path = payload["row"]["path"]
+        if read_to_memory:
+            with open(path, "rb") as fh:
+                payload["raw"] = fh.read()
+        else:
+            payload["raw"] = path
+        return payload
+
+    def decode(payload):
+        raw = payload.pop("raw")
+        src = io.BytesIO(raw) if isinstance(raw, bytes) else raw
+        img = Image.open(src)
+        img.load()
+        payload["src"] = img.convert("RGB")
+        return payload
+
+    def view_stages(tag):
+        key = "v%s" % tag
+
+        def start(payload):
+            # view 2 must re-crop from the decoded source, so `src` stays live
+            payload[key] = crop(payload["src"])
+            return payload
+
+        def step(fn):
+            def stage(payload):
+                payload[key] = fn(payload[key])
+                return payload
+            return stage
+
+        return [
+            ("v%s_random_resized_crop" % tag, start),
+            ("v%s_horizontal_flip" % tag, step(flip)),
+            ("v%s_color_jitter" % tag, step(jit)),
+            ("v%s_grayscale" % tag, step(gray)),
+            ("v%s_gaussian_blur" % tag, step(blur)),
+            ("v%s_to_tensor" % tag, step(to_tensor)),
+            ("v%s_normalize" % tag, step(norm)),
+        ]
+
+    def stack(payload):
+        import torch
+        payload["out"] = torch.stack([payload.pop("v1"), payload.pop("v2")])
+        payload.pop("src", None)
+        return payload
+
+    return ([("read", read), ("decode", decode)]
+            + view_stages("1") + view_stages("2")
+            + [("stack_views", stack)])
+
+
+# ---------------------------------------------------------------------------
 # LibriSpeech
 # ---------------------------------------------------------------------------
 
@@ -209,6 +305,12 @@ def librispeech_pipeline(sample_rate=16000, n_mels=64, win_ms=20.0, hop_ms=10.0,
 # ---------------------------------------------------------------------------
 # synthetic image corpus -- lets the Mac smoke test run with no dataset
 # ---------------------------------------------------------------------------
+
+@register("synthetic_simclr")
+def synthetic_simclr_pipeline(**kwargs):
+    """SimCLR stack over the synthetic corpus, for the smoke test."""
+    return openimages_simclr_pipeline(**kwargs)
+
 
 @register("synthetic_image")
 def synthetic_image_pipeline(**kwargs):

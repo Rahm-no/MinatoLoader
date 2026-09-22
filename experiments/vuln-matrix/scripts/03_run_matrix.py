@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hmp import manifest as M            # noqa: E402
 from hmp import pipelines                # noqa: E402
+from hmp.adaptive import DEFAULTS as ADAPT_DEFAULTS   # noqa: E402
 from hmp.minato import MinatoHarness, calibrate_t_out   # noqa: E402
 from hmp.runtime import (                # noqa: E402
     Consumer, SystemMonitor, append_summary, baseline_loader, plan_cores,
@@ -64,6 +65,22 @@ def base_cfg(args, rows, run_dir):
         "idle_timeout_s": args.idle_timeout,
         "epoch_timeout_s": args.epoch_timeout,
         "pin_memory": args.pin_memory,
+        "max_batches": args.max_batches,
+        # dynamic threshold adaptation (paper section 4.2)
+        "adapt": args.adapt,
+        "adapt_percentile": args.t_out_percentile,
+        "adapt_fallback_percentile": args.adapt_fallback_percentile,
+        "adapt_margin": args.t_out_margin,
+        "adapt_window": args.adapt_window,
+        "adapt_interval_s": args.adapt_interval,
+        "adapt_min_samples": args.adapt_min_samples,
+        "adapt_max_step_ratio": args.adapt_max_step_ratio,
+        "adapt_escalate_rate": args.adapt_escalate_rate,
+        "adapt_deescalate_rate": args.adapt_deescalate_rate,
+        "adapt_cooldown_s": args.adapt_cooldown,
+        "adapt_censoring": args.adapt_censoring,
+        "t_out_min": args.t_out_min,
+        "t_out_max": args.t_out_max,
     }
 
 
@@ -79,6 +96,8 @@ def run_baseline(args, rows, run_dir, device):
     t_epoch = None
     t_last = time.perf_counter()
     for i, (tensors, orders, n_slow, durs) in enumerate(loader):
+        if args.max_batches and i >= args.max_batches:
+            break
         lat = time.perf_counter() - t_last
         c = consumer.step(tensors)
         consumer_wall += c
@@ -124,7 +143,8 @@ def run_minato(args, rows, run_dir, device, n_fg, n_bg):
     with open(os.path.join(run_dir, "calibration.json"), "w") as fh:
         json.dump(calib, fh, indent=2, sort_keys=True)
 
-    harness = MinatoHarness(rows, cfg)
+    harness = MinatoHarness(rows, cfg,
+                            trace_path=os.path.join(run_dir, "threshold_trace.csv"))
     consumer = Consumer(args.consumer, device)
     harness.start()
 
@@ -150,7 +170,9 @@ def run_minato(args, rows, run_dir, device, n_fg, n_bg):
             batches.append(meta)
 
     epoch_wall = time.perf_counter() - t_epoch
+    adapt = harness.adapt_summary()
     harness.shutdown()
+    adapt = harness.adapt_summary() or adapt
 
     write_batches(os.path.join(run_dir, "batches.csv"), batches)
     if warm:
@@ -164,11 +186,12 @@ def run_minato(args, rows, run_dir, device, n_fg, n_bg):
         print("  WARNING: epoch ended with %d/%d samples received; the epoch "
               "timeout or a worker error truncated it"
               % (received, len(rows)))
-    return {
+    out = {
         "epoch_wall_s": epoch_wall,
         "throughput_samples_s": measured / epoch_wall if epoch_wall > 0 else "",
         "consumer_wall_s": consumer_wall,
         "n_samples": len(rows),
+        "adapt": int(bool(args.adapt)),
         "t_out_s": calib["t_out"],
         "t_out_percentile": calib["percentile"],
         "warmup_n": calib["n_warmup"],
@@ -177,6 +200,8 @@ def run_minato(args, rows, run_dir, device, n_fg, n_bg):
         "warmup_slow_below_t_out_frac": calib.get("warmup_slow_below_t_out_frac", ""),
         "stage_median_s": calib["stage_median_s"],
     }
+    out.update(adapt)
+    return out
 
 
 def main():
@@ -214,6 +239,40 @@ def main():
     ap.add_argument("--idle-timeout", dest="idle_timeout", type=float, default=60.0)
     ap.add_argument("--epoch-timeout", dest="epoch_timeout", type=float,
                     default=3600.0)
+    ap.add_argument("--max-batches", dest="max_batches", type=int, default=0,
+                    help="stop after this many MEASURED batches (0 = full epoch). "
+                         "--warmup-batches are consumed first and not counted.")
+    ap.add_argument("--t-out-min", dest="t_out_min", type=float,
+                    default=ADAPT_DEFAULTS["t_out_min"])
+    ap.add_argument("--t-out-max", dest="t_out_max", type=float,
+                    default=ADAPT_DEFAULTS["t_out_max"])
+    # ---- dynamic threshold adaptation -----------------------------------
+    ap.add_argument("--adapt", action="store_true", default=False,
+                    help="enable the background profiler that rewrites t_out "
+                         "during the run. Off by default so runs stay "
+                         "comparable with the fixed-t_out matrix.")
+    ap.add_argument("--adapt-fallback-percentile", dest="adapt_fallback_percentile",
+                    type=float, default=ADAPT_DEFAULTS["adapt_fallback_percentile"])
+    ap.add_argument("--adapt-window", dest="adapt_window", type=int,
+                    default=ADAPT_DEFAULTS["adapt_window"])
+    ap.add_argument("--adapt-interval", dest="adapt_interval", type=float,
+                    default=ADAPT_DEFAULTS["adapt_interval_s"])
+    ap.add_argument("--adapt-min-samples", dest="adapt_min_samples", type=int,
+                    default=ADAPT_DEFAULTS["adapt_min_samples"])
+    ap.add_argument("--adapt-max-step-ratio", dest="adapt_max_step_ratio",
+                    type=float, default=ADAPT_DEFAULTS["adapt_max_step_ratio"])
+    ap.add_argument("--adapt-escalate-rate", dest="adapt_escalate_rate",
+                    type=float, default=ADAPT_DEFAULTS["adapt_escalate_rate"])
+    ap.add_argument("--adapt-deescalate-rate", dest="adapt_deescalate_rate",
+                    type=float, default=ADAPT_DEFAULTS["adapt_deescalate_rate"])
+    ap.add_argument("--adapt-cooldown", dest="adapt_cooldown", type=float,
+                    default=ADAPT_DEFAULTS["adapt_cooldown_s"])
+    ap.add_argument("--adapt-censoring", dest="adapt_censoring",
+                    choices=["reconstructed", "censored"],
+                    default=ADAPT_DEFAULTS["adapt_censoring"],
+                    help="'censored' feeds the cut-off value of a migrated "
+                         "sample back into the percentile, reproducing the "
+                         "downward spiral described in hmp/adaptive.py")
     ap.add_argument("--pin", action="store_true", help="CPU affinity (Linux only)")
     ap.add_argument("--pin-memory", dest="pin_memory", action="store_true")
     ap.add_argument("--seed", type=int, default=1234)
@@ -303,6 +362,15 @@ def main():
             print("  t_out       : %.4fs   migrations: %s  (at stage 0: %s)"
                   % (result["t_out_s"], row.get("migrations"),
                      row.get("migrations_at_stage_0")))
+            if args.adapt:
+                print("  adaptation  : %s update(s), %s escalation(s) to P%s; "
+                      "t_out %.4f -> %.4f (range %.4f..%.4f)"
+                      % (result.get("adapt_updates"),
+                         result.get("adapt_escalations"),
+                         args.adapt_fallback_percentile,
+                         result["t_out_s"], result.get("adapt_t_out_final", 0.0),
+                         result.get("adapt_t_out_min", 0.0),
+                         result.get("adapt_t_out_max", 0.0)))
             print("  slow recall : %s   misclassification: %s"
                   % (row.get("slow_recall"), row.get("misclassification_rate")))
 

@@ -201,7 +201,7 @@ EVENT_FIELDS = [
     "wall", "role", "pid", "event", "order", "sample_id", "truth_label",
     "is_sentinel", "sentinel_role", "duration_s", "queue_wait_s",
     "detect_s", "wasted_s", "preserved_s", "resume_stage", "n_stages",
-    "stage_times_json",
+    "t_out_s", "stage_times_json",
 ]
 
 
@@ -268,16 +268,24 @@ def _pin(cores):
 # workers
 # ---------------------------------------------------------------------------
 
-def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
-    """Pull indices, run the pipeline under t_out, migrate on timeout."""
+def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores,
+                      threshold_handles=None, stats_q=None):
+    """Pull indices, run the pipeline under t_out, migrate on timeout.
+
+    ``t_out`` is re-read from shared memory once per sample, so a threshold
+    rewritten by the controller takes effect on the next sample rather than at
+    the next epoch. A stale read only means one sample was judged against the
+    previous value.
+    """
     import concurrent.futures
     from hmp import pipelines
+    from hmp.adaptive import WorkerThresholdView
 
     _pin(cores)
     stages = pipelines.build_stages(cfg["pipeline"], cfg["pipeline_kwargs"],
                                     seed=cfg["seed"] + worker_id)
     n_stages = len(stages)
-    t_out = cfg["t_out"]
+    threshold = WorkerThresholdView(threshold_handles) if threshold_handles else None
     log = EventLog(cfg["events_dir"], "fg")
     executor = concurrent.futures.ThreadPoolExecutor(
         max_workers=cfg["front_threads"], thread_name_prefix="fg%d" % worker_id)
@@ -292,6 +300,7 @@ def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
             if item is STOP:
                 break
 
+            t_out = threshold.get() if threshold is not None else cfg["t_out"]
             state = {"stage": 0, "payload": None}
             lock = threading.Lock()
             abort = threading.Event()
@@ -321,7 +330,8 @@ def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
                           truth_label=item["truth_label"],
                           is_sentinel=int(bool(item["is_sentinel"])),
                           sentinel_role=item.get("sentinel_role", ""),
-                          n_stages=n_stages, queue_wait_s="%.6f" % qwait)
+                          n_stages=n_stages, queue_wait_s="%.6f" % qwait,
+                          t_out_s="%.6f" % t_out)
 
             try:
                 payload = future.result(timeout=t_out)
@@ -335,6 +345,11 @@ def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
                             "tensor": payload.get("out")})
                 log.write(event="fast", duration_s="%.6f" % dur,
                           stage_times_json=_stage_json(timings), **common)
+                if stats_q is not None:
+                    try:
+                        stats_q.put(("fast", item["order"], dur))
+                    except Exception:
+                        pass
             except concurrent.futures.TimeoutError:
                 abort.set()
                 future.add_done_callback(lambda f: f.exception())
@@ -349,6 +364,11 @@ def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
                           wasted_s="%.6f" % max(0.0, detect - preserved),
                           resume_stage=stage,
                           stage_times_json=_stage_json(timings), **common)
+                if stats_q is not None:
+                    try:
+                        stats_q.put(("migrate", item["order"], detect))
+                    except Exception:
+                        pass
             except Exception as exc:
                 log.write(event="fg_error", duration_s="0",
                           stage_times_json=json.dumps([["error", repr(exc)]]),
@@ -364,7 +384,8 @@ def foreground_worker(worker_id, cfg, index_q, fast_q, slow_q, ready_ev, cores):
         log.close()
 
 
-def background_worker(worker_id, cfg, slow_q, resumed_q, ready_ev, cores):
+def background_worker(worker_id, cfg, slow_q, resumed_q, ready_ev, cores,
+                      stats_q=None):
     """Resume migrated samples at their transformation index."""
     from hmp import pipelines
 
@@ -404,6 +425,11 @@ def background_worker(worker_id, cfg, slow_q, resumed_q, ready_ev, cores):
                                "route": "slow", "fg_s": 0.0, "bg_s": dur,
                                "resume_stage": resume_stage,
                                "tensor": payload.get("out")})
+                if stats_q is not None:
+                    try:
+                        stats_q.put(("resume", row["order"], dur))
+                    except Exception:
+                        pass
                 log.write(event="resume" if not restarted else "resume_restart",
                           order=row["order"], sample_id=row["sample_id"],
                           truth_label=row["truth_label"],
@@ -434,7 +460,9 @@ def background_worker(worker_id, cfg, slow_q, resumed_q, ready_ev, cores):
 class MinatoHarness(object):
     """Fixed F/B split, fixed t_out, fast-queue-preferential batching."""
 
-    def __init__(self, rows, cfg):
+    def __init__(self, rows, cfg, trace_path=None):
+        from hmp.adaptive import SharedThreshold, ThresholdController
+
         self.rows = rows
         self.cfg = cfg
         self.n = len(rows)
@@ -446,6 +474,18 @@ class MinatoHarness(object):
         self.procs = []
         self.queue_trace = []
         self._stop_trace = threading.Event()
+
+        # t_out lives in shared memory whether or not adaptation is enabled,
+        # so the fast and adaptive paths run identical worker code.
+        self.threshold = SharedThreshold(cfg["t_out"],
+                                         cfg.get("adapt_percentile", 75.0))
+        self.adapt = bool(cfg.get("adapt"))
+        self.stats_q = ctx.Queue() if self.adapt else None
+        self.controller = None
+        if self.adapt:
+            self.controller = ThresholdController(
+                self.threshold, self.stats_q, cfg, trace_path=trace_path,
+                log=print)
 
     def start(self):
         cfg = self.cfg
@@ -459,7 +499,8 @@ class MinatoHarness(object):
             ev = mp.Event()
             p = mp.Process(target=foreground_worker,
                            args=(i, cfg, self.index_q, self.fast_q, self.slow_q,
-                                 ev, cores.get("fg", {}).get(i)),
+                                 ev, cores.get("fg", {}).get(i),
+                                 self.threshold.handles(), self.stats_q),
                            daemon=True)
             p.start()
             self.procs.append((p, ev))
@@ -467,7 +508,7 @@ class MinatoHarness(object):
             ev = mp.Event()
             p = mp.Process(target=background_worker,
                            args=(i, cfg, self.slow_q, self.resumed_q, ev,
-                                 cores.get("bg", {}).get(i)),
+                                 cores.get("bg", {}).get(i), self.stats_q),
                            daemon=True)
             p.start()
             self.procs.append((p, ev))
@@ -477,6 +518,8 @@ class MinatoHarness(object):
         t = threading.Thread(target=self._trace_queues, daemon=True)
         t.start()
         self._trace_thread = t
+        if self.controller is not None:
+            self.controller.start()
 
     def _trace_queues(self):
         while not self._stop_trace.is_set():
@@ -486,10 +529,15 @@ class MinatoHarness(object):
                     "fast": self.fast_q.qsize(),
                     "slow": self.slow_q.qsize(),
                     "resumed": self.resumed_q.qsize(),
+                    "t_out": self.threshold.get(),
+                    "percentile": self.threshold.get_percentile(),
                 })
             except NotImplementedError:      # qsize() unavailable on macOS
                 self.queue_trace.append({"t": time.time(), "fast": -1,
-                                         "slow": -1, "resumed": -1})
+                                         "slow": -1, "resumed": -1,
+                                         "t_out": self.threshold.get(),
+                                         "percentile":
+                                             self.threshold.get_percentile()})
             self._stop_trace.wait(self.cfg["queue_trace_interval_s"])
 
     def iter_batches(self):
@@ -503,9 +551,12 @@ class MinatoHarness(object):
         bs = cfg["batch_size"]
         received = 0
         batch_index = 0
+        max_batches = cfg.get("max_batches") or 0
         deadline = time.time() + cfg["epoch_timeout_s"]
 
         while received < self.n and time.time() < deadline:
+            if max_batches and batch_index >= max_batches:
+                break
             batch, t_batch0 = [], time.perf_counter()
             waits = []
             while len(batch) < bs and received + len(batch) < self.n:
@@ -560,8 +611,14 @@ class MinatoHarness(object):
         except NotImplementedError:
             return True
 
+    def adapt_summary(self):
+        return self.controller.summary() if self.controller is not None else {}
+
     def shutdown(self):
         self._stop_trace.set()
+        if self.controller is not None:
+            self.controller.stop()
+            self.controller.join(timeout=15)
         for _ in range(self.cfg["n_background"]):
             try:
                 self.slow_q.put(STOP)

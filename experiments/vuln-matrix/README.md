@@ -4,10 +4,11 @@ Sweeps `(slow_fraction × cost_ratio × F/B split)` for both loaders and records
 the metrics needed to test three claimed architectural vulnerabilities of the
 reactive fast/slow classification design.
 
-Run against the **corrected** loader — calibrated `t_out` and resume-from-index,
-both merged in the previous commit. Adaptive threshold adjustment and adaptive
-worker scaling are deliberately **not** implemented; `t_out` is computed once
-from warm-up and the F/B split is fixed per run, as agreed.
+Run against the **corrected** loader — calibrated `t_out` and resume-from-index.
+Dynamic threshold adaptation (paper §4.2) is now implemented too but defaults
+to **off**, because enabling it removes `t_out` from the set of controlled
+variables; see `docs/RUN_LINUX_SIMCLR.md`. Adaptive *worker* scaling is still
+not implemented: the F/B split stays fixed per run.
 
 ---
 
@@ -32,6 +33,7 @@ populated before you spend a full matrix on the server.
 ## Files
 
 ```
+hmp/adaptive.py     dynamic threshold adaptation: shared t_out, P75->P90  (torch-free)
 hmp/manifest.py     percentile pools, deterministic mixing, sentinels   (torch-free)
 hmp/minato.py       stage runner, warm-up calibration, F/B workers      (torch-free core)
 hmp/pipelines.py    OpenImages / LibriSpeech / synthetic stage lists    (torch)
@@ -44,6 +46,7 @@ scripts/selftest.py             torch-free logic checks
 scripts/smoke_test.sh           end-to-end smoke test
 scripts/check_summary.py        fails if any metric field is empty
 scripts/run_full_matrix.sh      the full sweep (Linux)
+scripts/run_simclr_100batches.sh OpenImages+SimCLR, 100 batches, fixed vs adaptive
 ```
 
 ---
@@ -55,6 +58,17 @@ scripts/run_full_matrix.sh      the full sweep (Linux)
 | 1. Reactive detection tax scales with `slow_fraction`, independent of split | `detect_tax_total_s`, `detect_tax_per_sample_s`, `migrations`, `t_out_s`. Plot `detect_tax_per_sample_s` against `slow_fraction`, one line per split — the claim predicts the lines overlap. |
 | 2. P75 is a minority-tail assumption | `slow_recall`, `fn_slow_kept_fast`, `misclassification_rate`, `warmup_slow_below_t_out_frac`. The claim predicts recall collapses once `slow_fraction > 0.25`. |
 | 3. Fixed F/B split can't track a shifting requirement | `throughput_samples_s` and `batch_p95_s` across splits at fixed `slow_fraction`; queue occupancy in `queue_trace.json`. The claim predicts no split dominates. |
+
+With `--adapt`, three more columns matter: `adapt_updates`,
+`adapt_escalations` and `adapt_seconds_at_fallback`, plus a per-run
+`threshold_trace.csv`. Note that the escalation rule can only act on the
+observed migration rate — "too many samples are incorrectly classified" is not
+observable at runtime, since it needs the true cost of a sample that was cut
+short. The harness has ground truth from the manifest, so whether the proxy
+tracks true misclassification is itself measurable. Also note that feeding a
+migrated sample's cut-off time back into the percentile makes `t_out` a fixed
+point of itself and unable to rise; `--adapt-censoring` exposes both
+behaviours and `hmp/adaptive.py` documents the measurement.
 
 Two metrics the original paper does not report and which this harness adds:
 

@@ -89,6 +89,29 @@ PARSER.add_argument('--num_slow_workers', dest='num_slow_workers', type=int, def
                     help='Background processes that resume migrated samples.')
 PARSER.add_argument('--queue_wait_timeout', dest='queue_wait_timeout', type=float, default=30.0)
 
+PARSER.add_argument('--adapt', dest='adapt', action='store_true', default=False,
+                    help='Enable the background profiler that rewrites t_out during '
+                         'training (paper 4.2). Off by default: with it on, t_out is '
+                         'no longer a fixed experimental variable.')
+PARSER.add_argument('--adapt_fallback_percentile', dest='adapt_fallback_percentile',
+                    type=float, default=90.0,
+                    help='Percentile used once too many samples are being migrated.')
+PARSER.add_argument('--adapt_window', dest='adapt_window', type=int, default=512)
+PARSER.add_argument('--adapt_interval_s', dest='adapt_interval_s', type=float, default=5.0)
+PARSER.add_argument('--adapt_min_samples', dest='adapt_min_samples', type=int, default=64)
+PARSER.add_argument('--adapt_max_step_ratio', dest='adapt_max_step_ratio',
+                    type=float, default=2.0,
+                    help='t_out may not move by more than this factor per update.')
+PARSER.add_argument('--adapt_escalate_rate', dest='adapt_escalate_rate',
+                    type=float, default=0.35,
+                    help='Migration rate above which the percentile escalates.')
+PARSER.add_argument('--adapt_deescalate_rate', dest='adapt_deescalate_rate',
+                    type=float, default=0.20)
+PARSER.add_argument('--adapt_cooldown_s', dest='adapt_cooldown_s', type=float, default=20.0)
+PARSER.add_argument('--adapt_censoring', dest='adapt_censoring', type=str,
+                    default='reconstructed', choices=['reconstructed', 'censored'],
+                    help="'censored' feeds a migrated sample's cut-off time back into "
+                         'the percentile, which pins t_out and prevents it from rising.')
 PARSER.add_argument('--profile_dir', dest='profile_dir', type=str, default="",
                     help='Directory for calibration JSON and per-process event CSVs.')
 PARSER.add_argument('--profile_fast_samples', dest='profile_fast_samples',

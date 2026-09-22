@@ -30,6 +30,13 @@ CALIB_CACHE=${CALIB_CACHE:-/results/minato_calibration.json}
 PROFILE_DIR=${PROFILE_DIR:-/results/minato_profile}
 SAMPLE_TIMEOUT=${SAMPLE_TIMEOUT:-2.0}
 NUM_SLOW_WORKERS=${NUM_SLOW_WORKERS:-3}
+# Dynamic threshold adaptation (paper 4.2). ADAPT=1 turns it on; off by default
+# because it makes t_out a moving value rather than a fixed run parameter.
+ADAPT=${ADAPT:-0}
+ADAPT_FALLBACK=${ADAPT_FALLBACK:-90}
+ADAPT_ESCALATE=${ADAPT_ESCALATE:-0.35}
+ADAPT_CENSORING=${ADAPT_CENSORING:-reconstructed}
+if [ "${ADAPT}" = "1" ]; then ADAPT_FLAGS="--adapt"; else ADAPT_FLAGS=""; fi
 if [ "${CALIB_SECONDS}" = "0" ]; then CALIBRATE=false; else CALIBRATE=true; fi
 SAVE_CKPT_PATH="/ckpts"
 
@@ -73,7 +80,11 @@ python3 -c "import torch; print(torch.__version__)"
     --calib_cache ${CALIB_CACHE} \
     --sample_timeout ${SAMPLE_TIMEOUT} \
     --num_slow_workers ${NUM_SLOW_WORKERS} \
-    --profile_dir ${PROFILE_DIR}
+    --profile_dir ${PROFILE_DIR} \
+    ${ADAPT_FLAGS} \
+    --adapt_fallback_percentile ${ADAPT_FALLBACK} \
+    --adapt_escalate_rate ${ADAPT_ESCALATE} \
+    --adapt_censoring ${ADAPT_CENSORING}
 
     # end timing
     end=$(date +%s)

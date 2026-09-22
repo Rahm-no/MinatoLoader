@@ -39,6 +39,19 @@ def main(path):
         if int(float(r.get("n_errors") or 0)) > 0:
             problems.append("%s: %s sample errors during the run"
                             % (r["run_id"], r["n_errors"]))
+        if r["loader"] == "minato" and (r.get("adapt") or "").strip() in ("1", "True"):
+            for k in ("adapt_updates", "adapt_t_out_final",
+                      "adapt_percentile_final", "adapt_censoring"):
+                if not (r.get(k) or "").strip():
+                    problems.append("%s: %s is empty on an adaptive run"
+                                    % (r["run_id"], k))
+            try:
+                if int(float(r["adapt_updates"])) == 0:
+                    problems.append("%s: adaptation enabled but the controller "
+                                    "never updated t_out (raise --max-batches or "
+                                    "lower --adapt-min-samples)" % r["run_id"])
+            except (ValueError, KeyError):
+                pass
         if r["loader"] == "minato":
             tot = sum(int(float(r[k] or 0)) for k in
                       ("tp_slow_migrated", "fn_slow_kept_fast",

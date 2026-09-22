@@ -71,6 +71,19 @@ class MinatoConfig(object):
         "t_out_max": (120.0, float, "MINATO_TOUT_MAX"),
         # fallback when calibration is disabled or produced too few samples
         "sample_timeout": (2.0, float, "MINATO_SAMPLE_TIMEOUT"),
+        # ---- dynamic threshold adaptation (paper 4.2) ---------------------
+        # Off by default: enabling it means t_out is no longer a fixed
+        # experimental variable, which changes what a run measures.
+        "adapt": (False, bool, "MINATO_ADAPT"),
+        "adapt_fallback_percentile": (90.0, float, "MINATO_ADAPT_FALLBACK"),
+        "adapt_window": (512, int, "MINATO_ADAPT_WINDOW"),
+        "adapt_interval_s": (5.0, float, "MINATO_ADAPT_INTERVAL"),
+        "adapt_min_samples": (64, int, "MINATO_ADAPT_MIN_SAMPLES"),
+        "adapt_max_step_ratio": (2.0, float, "MINATO_ADAPT_MAX_STEP"),
+        "adapt_escalate_rate": (0.35, float, "MINATO_ADAPT_ESCALATE"),
+        "adapt_deescalate_rate": (0.20, float, "MINATO_ADAPT_DEESCALATE"),
+        "adapt_cooldown_s": (20.0, float, "MINATO_ADAPT_COOLDOWN"),
+        "adapt_censoring": ("reconstructed", str, "MINATO_ADAPT_CENSORING"),
         # ---- migration ---------------------------------------------------
         "checkpoint_copy": (True, bool, "MINATO_CHECKPOINT_COPY"),
         "front_threads": (2, int, "MINATO_FRONT_THREADS"),
@@ -497,3 +510,200 @@ class MigrationRecorder(object):
                     pass
                 self._fh = None
                 self._writer = None
+
+
+# --------------------------------------------------------------------------
+# dynamic threshold adaptation
+# --------------------------------------------------------------------------
+
+class SharedThreshold(object):
+    """t_out in shared memory, so every forked producer sees an update.
+
+    Created with the stdlib multiprocessing primitives that the rest of this
+    loader uses (see the note about torch.multiprocessing being shadowed in
+    pytorch_loader.py).
+    """
+
+    def __init__(self, t_out, percentile_mode):
+        import multiprocessing
+        self._t_out = multiprocessing.Value("d", float(t_out))
+        self._percentile = multiprocessing.Value("d", float(percentile_mode))
+
+    def get(self):
+        return self._t_out.value
+
+    def get_percentile(self):
+        return self._percentile.value
+
+    def set(self, t_out, percentile_mode=None):
+        with self._t_out.get_lock():
+            self._t_out.value = float(t_out)
+        if percentile_mode is not None:
+            with self._percentile.get_lock():
+                self._percentile.value = float(percentile_mode)
+
+
+class ThresholdController(threading.Thread):
+    """Background profiler that rewrites t_out during training.
+
+    Observations arrive from the producer processes on `stats_q` as
+    ("fast", idx, latency), ("migrate", idx, detect_s) and
+    ("resume", idx, bg_s).
+
+    On censoring: a migrated sample's true cost is unknown, because it was cut
+    off at t_out. Feeding that cut-off value back in makes the threshold a
+    fixed point of itself -- every censored observation is <= t_out, so once
+    the migration rate reaches (100 - P)%, the recomputed percentile IS t_out
+    and the update does nothing. The default "reconstructed" mode instead pairs
+    each migration with its background resume time and uses detect_s + bg_s,
+    which over-counts the re-executed stage and therefore errs high. See
+    experiments/vuln-matrix/hmp/adaptive.py for the measured comparison.
+    """
+
+    def __init__(self, shared, stats_q, cfg, profile_dir=""):
+        super(ThresholdController, self).__init__(daemon=True)
+        import collections
+        self.shared = shared
+        self.stats_q = stats_q
+        self.cfg = cfg
+        self.profile_dir = profile_dir
+        self.window = collections.deque(maxlen=int(cfg.adapt_window))
+        self.flags = collections.deque(maxlen=int(cfg.adapt_window))
+        self._pending = {}
+        self._stop = threading.Event()
+        self._new = 0
+        self._mode = float(cfg.calib_percentile)
+        self._mode_since = time.time()
+        self.updates = 0
+        self.escalations = 0
+        self.deescalations = 0
+        self.history = [shared.get()]
+        self._fh = None
+
+    def _trace(self, row):
+        if not self.profile_dir:
+            return
+        try:
+            os.makedirs(self.profile_dir, exist_ok=True)
+            if self._fh is None:
+                path = os.path.join(self.profile_dir, "threshold_trace.csv")
+                new = not os.path.exists(path)
+                self._fh = open(path, "a", newline="")
+                self._w = csv.writer(self._fh)
+                if new:
+                    self._w.writerow(["wall", "update", "n_obs", "migration_rate",
+                                      "percentile", "t_out_before", "t_out_after",
+                                      "mode_change", "reason"])
+            self._w.writerow(row)
+            self._fh.flush()
+        except OSError:
+            self.profile_dir = ""
+
+    def _ingest(self, item):
+        kind = item[0]
+        if kind == "fast":
+            self.window.append(float(item[2]))
+            self.flags.append(0)
+            self._new += 1
+        elif kind == "migrate":
+            if self.cfg.adapt_censoring == "censored":
+                self.window.append(float(item[2]))
+                self.flags.append(1)
+                self._new += 1
+            else:
+                self._pending[item[1]] = float(item[2])
+        elif kind == "resume":
+            detect = self._pending.pop(item[1], None)
+            if detect is not None:
+                self.window.append(detect + float(item[2]))
+                self.flags.append(1)
+                self._new += 1
+
+    def _update(self, force=False):
+        cfg = self.cfg
+        if not force and (len(self.window) < cfg.adapt_min_samples
+                          or self._new < cfg.adapt_min_samples):
+            return
+        self._new = 0
+        ordered = sorted(self.window)
+        rate = (sum(self.flags) / float(len(self.flags))) if self.flags else 0.0
+        now = time.time()
+        dwell = (now - self._mode_since) >= cfg.adapt_cooldown_s
+        change, reason = "", "periodic"
+        if self._mode == cfg.calib_percentile and rate > cfg.adapt_escalate_rate \
+                and dwell:
+            self._mode = float(cfg.adapt_fallback_percentile)
+            self._mode_since, change = now, "escalate"
+            self.escalations += 1
+            reason = "migration_rate %.3f > %.3f" % (rate, cfg.adapt_escalate_rate)
+        elif self._mode == cfg.adapt_fallback_percentile \
+                and rate < cfg.adapt_deescalate_rate and dwell:
+            self._mode = float(cfg.calib_percentile)
+            self._mode_since, change = now, "deescalate"
+            self.deescalations += 1
+            reason = "migration_rate %.3f < %.3f" % (rate, cfg.adapt_deescalate_rate)
+
+        before = self.shared.get()
+        after = _percentile_of(ordered, self._mode) * cfg.calib_margin
+        ratio = cfg.adapt_max_step_ratio
+        if ratio and ratio > 1.0 and before > 0:
+            after = min(max(after, before / ratio), before * ratio)
+        after = min(max(after, cfg.t_out_min), cfg.t_out_max)
+        self.shared.set(after, self._mode)
+        self.updates += 1
+        self.history.append(after)
+        self._trace(["%.6f" % now, self.updates, len(self.window),
+                     "%.4f" % rate, self._mode, "%.6f" % before,
+                     "%.6f" % after, change, reason])
+        if change:
+            print("[minato/adapt] %s to P%.0f (%s); t_out %.4fs -> %.4fs"
+                  % (change, self._mode, reason, before, after))
+
+    def run(self):
+        last = time.time()
+        while not self._stop.is_set():
+            try:
+                item = self.stats_q.get(timeout=0.2)
+                if item is not None:
+                    self._ingest(item)
+            except Exception:
+                pass
+            if time.time() - last >= self.cfg.adapt_interval_s:
+                self._update()
+                last = time.time()
+        while True:
+            try:
+                item = self.stats_q.get_nowait()
+            except Exception:
+                break
+            if item is not None:
+                self._ingest(item)
+        self._update(force=True)
+        if self._fh is not None:
+            self._fh.close()
+
+    def stop(self):
+        self._stop.set()
+
+    def summary(self):
+        hist = [h for h in self.history if h is not None]
+        return {"adapt_updates": self.updates,
+                "adapt_escalations": self.escalations,
+                "adapt_deescalations": self.deescalations,
+                "adapt_t_out_final": self.shared.get(),
+                "adapt_t_out_min": min(hist) if hist else None,
+                "adapt_t_out_max": max(hist) if hist else None,
+                "adapt_percentile_final": self.shared.get_percentile()}
+
+
+def _percentile_of(sorted_values, q):
+    if not sorted_values:
+        return 0.0
+    if q <= 0:
+        return sorted_values[0]
+    if q >= 100:
+        return sorted_values[-1]
+    pos = (len(sorted_values) - 1) * (q / 100.0)
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_values) - 1)
+    return sorted_values[lo] * (1 - (pos - lo)) + sorted_values[hi] * (pos - lo)
