@@ -67,7 +67,7 @@ class RandBalancedCrop:
 
     def __call__(self, data):
         image, label = data["image"], data["label"]
-        for i in range(5):
+        for i in range(1):
             image_new, label_new, cords_new = self.rand_foreg_cropd(image, label)
         
             image1, label1, cords1 = self._rand_crop(image, label)
