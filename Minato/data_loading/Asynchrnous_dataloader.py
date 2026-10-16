@@ -16,7 +16,7 @@ data_stop_event = mp.Event()
 data_resume_event = mp.Event()
 
 class DataProducer(mp.Process):
-    def __init__(self, queue, dataset, batch_size, shuffle, pin_memory, device, queue_size, indices, sampler, num_workers):
+    def __init__(self, queue, dataset, batch_size, shuffle, pin_memory, device, queue_size, indices, sampler, num_workers, producer_id, seed):
         super().__init__()
         self.queue = queue
         self.dataset = dataset
@@ -28,13 +28,36 @@ class DataProducer(mp.Process):
         self.sampler = sampler
         self.queue_size = queue_size
         self.num_workers = num_workers
+        self.producer_id = producer_id
+        self.seed = seed
         # print("Num_workers", self.num_workers)
 
 
         self.rank = get_rank()  # Get the GPU rank for this producer
+
+    def epoch_indices(self, epoch):
+        # Draw a new order for every pass, as DataLoader does for every epoch.
+        # All producers of a rank compute the same order and take their own slice of it.
+        if hasattr(self.sampler, "set_epoch"):
+            self.sampler.set_epoch(epoch)
+            indices = list(self.sampler)
+        elif self.shuffle:
+            generator = torch.Generator().manual_seed(self.seed + epoch)
+            indices = torch.randperm(len(self.dataset), generator=generator).tolist()
+        else:
+            return self.indices
+        indices_per_producer = max(1, len(indices) // self.num_workers)
+        start_idx = self.producer_id * indices_per_producer
+        return indices[start_idx:start_idx + indices_per_producer]
+
     def run(self):
         # print(f"[GPU Rank {self.rank} | Producer {self.pid}] Starting.")
+        epoch = 0
         while not data_stop_event.is_set():
+            if epoch > 0:
+                self.indices = self.epoch_indices(epoch)
+            epoch += 1
+
             # Wait until the producer should resume
             if self.queue.qsize() < self.queue_size - 1:  # There's space in the queue
                 data_resume_event.set()  # Resume the producer
@@ -118,6 +141,7 @@ class AsynchronousLoader(DataLoader):
         self.shuffle = shuffle
 
         self.indices = list(self.sampler) # it gives the indices per gpu
+        self.seed = torch.initial_seed()
         # print(f"GPU Rank {self.rank} is assigned {len(self.indices)} samples.")
         self.queue = mp.Queue(maxsize=self.queue_size)
         
@@ -143,7 +167,7 @@ class AsynchronousLoader(DataLoader):
             
             producer = DataProducer(self.queue, self.dataset, self.batch_size, self.shuffle,
                                     self.pin_memory, self.device, self.queue_size,
-                                    producer_indices, self.sampler, self.num_workers)
+                                    producer_indices, self.sampler, self.num_workers, i, self.seed)
 
             producer.start()
             self.producers.append(producer)
