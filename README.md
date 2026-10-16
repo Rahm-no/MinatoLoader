@@ -206,7 +206,7 @@ After each run, the system will automatically:
 
 
 
-#### 3. Visualization
+#### 2. Visualization
 You can generate figures to summarize both performance and efficiency.
 
 * 📉 Training Time Comparison
