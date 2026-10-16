@@ -204,12 +204,7 @@ After each run, the system will automatically:
 - Save checkpoints under `ckpts/`  
 - Append training time results into `results/results_allsystems.csv`  
 
-#### 2. Reference training time
-For comparability, we report training time results on **8 GPUs for 10 epochs**:
 
-- ⚡ **PyTorch**: ~210 s  
-- 🚀 **DALI**: ~151 s  
-- 🌀 **MinatoLoader**: ~81 s  
 
 #### 3. Visualization
 You can generate figures to summarize both performance and efficiency.
